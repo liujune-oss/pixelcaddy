@@ -165,6 +165,12 @@
                 <tbody id="tableBody">
                 </tbody>
             </table>
+
+            <div style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;">
+                <button onclick="clearAllData()" style="background: #ff4444; color: white; font-size: 0.9rem;">
+                    ⚠️ Clear All Data on Device
+                </button>
+            </div>
         </div>
     </div>
 
@@ -179,6 +185,34 @@
         let myChart = null;
 
         document.getElementById('connectBtn').addEventListener('click', connect);
+
+        async function clearAllData() {
+            if (!confirm("⚠️ DANGER: This will permanently delete ALL history data on the Pixel Caddy device.\n\nAre you sure you want to continue?")) {
+                return;
+            }
+
+            if (!historyChar) {
+                alert("Device not connected!");
+                return;
+            }
+
+            try {
+                updateStatus("Wiping Data...");
+                const encoder = new TextEncoder();
+                const data = encoder.encode("WIPE");
+                await historyChar.writeValue(data);
+
+                // Clear local data
+                historyData = {};
+                updateUI();
+                alert("Wipe Command Sent. Device should beep to confirm.");
+                updateStatus("Data Wiped.");
+
+            } catch (error) {
+                console.error("Wipe Failed:", error);
+                alert("Failed to send command: " + error.message);
+            }
+        }
 
         function initChart() {
             const ctx = document.getElementById('trendChart').getContext('2d');
