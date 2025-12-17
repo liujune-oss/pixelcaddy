@@ -31,9 +31,11 @@
 #include <WiFi.h>
 #include <time.h>
 
+#include "secrets.h"
+
 // ================= 1. 用户配置 =================
-const char *ssid = "iamnotap";
-const char *password = "55955666";
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASSWORD;
 
 // ================= 2. 硬件引脚 =================
 #define PIN_MATRIX 9     // D9 (GPIO 9)
