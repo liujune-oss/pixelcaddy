@@ -873,7 +873,7 @@ void loop() {
 
     // Clear Arrays
     for (int i = 0; i < MAX_HISTORY_SIZE; i++) {
-      allGroupsHistory[i] = {0, 0, 0, 0, 0, 0};
+      memset(&allGroupsHistory[i], 0, sizeof(GroupRecord));
     }
     for (int i = 0; i < 10; i++) {
       groupResults[i] = 0;
