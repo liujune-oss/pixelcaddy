@@ -697,12 +697,25 @@ void changeBrightness(int delta) {
   saveBrightness();
   matrix.setBrightness(currentBrightness);
   playSound(6);
-  // 简单闪烁提示
-  matrix.fillScreen(C_WHITE);
+
+  // [NEW] Show Brightness Value
+  matrix.fillScreen(0);
+  matrix.setTextColor(C_WHITE);
+  // Center alignment logic for TomThumb
+  int xPos =
+      (currentBrightness >= 100) ? 1 : ((currentBrightness >= 10) ? 4 : 7);
+  matrix.setCursor(xPos, 10);
+  matrix.print(currentBrightness);
   matrix.show();
-  delay(100);
+  delay(500);
+
+  // Restore previous UI
   if (currentState == STATE_PLAYING)
     drawPlayingUI();
+  else if (currentState == STATE_SUMMARY_GROUP)
+    drawGroupSummary();
+  else if (currentState == STATE_SUMMARY_FINAL)
+    drawFinalSummary();
 }
 
 // 重置
@@ -843,9 +856,28 @@ void setup() {
   BLEDevice::startAdvertising();
   Serial.println("BLE Started");
 
+  // [NEW] Splash Screen "GO"
+  matrix.fillScreen(0);
+  matrix.setTextColor(C_GREEN);
+  matrix.setCursor(4, 10);
+  matrix.print("GO");
+  matrix.show();
+  delay(500);
+
+  // [NEW] Intelligent State Recovery & UI Initialization
   if (currentState == STATE_PLAYING) {
-    drawPlayingUI();
+    if (groupShots >= 10) {
+      // Bug Fix: Resume the interrupted transition
+      checkGroupCompletion();
+    } else {
+      drawPlayingUI();
+    }
+  } else if (currentState == STATE_SUMMARY_GROUP) {
+    drawGroupSummary();
+  } else if (currentState == STATE_SUMMARY_FINAL) {
+    drawFinalSummary();
   }
+
   lastActivityTime = millis();
 }
 
