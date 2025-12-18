@@ -215,6 +215,9 @@
         }
 
         function initChart() {
+            if (myChart) {
+                myChart.destroy();
+            }
             const ctx = document.getElementById('trendChart').getContext('2d');
             Chart.defaults.color = '#888';
             Chart.defaults.borderColor = '#444';

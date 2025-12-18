@@ -77,6 +77,7 @@ int deviceConnectedCount = 0; // [Fix] Counter instead of bool
 bool isBleEnabled = true;
 bool oldDeviceConnected = false;
 bool wipeRequested = false; // [New] Flag for remote wipe
+bool isTimeSynced = false;  // [New] Flag for time sync status
 
 const int MAX_HISTORY_SIZE = 100;
 
@@ -154,9 +155,11 @@ class TimeCallbacks : public BLECharacteristicCallbacks {
       if (t > 1600000000) {
         struct timeval now = {.tv_sec = (time_t)t, .tv_usec = 0};
         settimeofday(&now, NULL);
+        isTimeSynced = true; // [New] Mark time as synced
         Serial.println("Time synced via BLE");
 
         // [新增] 相对时间回溯修复
+
         // bootTime = CurrentSyncedTime - CurrentMillis
         uint32_t bootTime = t - (millis() / 1000);
         bool needsSave = false;
@@ -475,7 +478,16 @@ void drawPlayingUI() {
 
   // [Fix] 绘制蓝牙指示灯 (右上角 15,0)
   if (isBleEnabled) {
-    matrix.drawPixel(15, 0, matrix.Color(0, 0, 125)); // Blue Dot
+    uint32_t statusColor = matrix.Color(0, 0, 50); // Default: Standby (Dim)
+
+    if (deviceConnectedCount > 0) {
+      if (isTimeSynced) {
+        statusColor = C_BLUE; // Bright Blue (Synced)
+      } else {
+        statusColor = matrix.Color(0, 0, 150); // Connected, Waiting for Time
+      }
+    }
+    matrix.drawPixel(15, 0, statusColor);
   }
 
   matrix.show();
