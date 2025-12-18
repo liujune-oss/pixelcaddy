@@ -21,15 +21,33 @@
 #include <AsyncTCP.h>
 #include <BLE2902.h>
 #include <BLEDevice.h>
+#include <BLEHIDDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <ElegantOTA.h>
 #include <Fonts/TomThumb.h>
+#include <HIDKeyboardTypes.h>
+#include <HIDTypes.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <time.h>
+
+const int MAX_HISTORY_SIZE = 100;
+
+struct GroupRecord {
+  uint32_t timestamp;    // Unix Timestamp
+  uint32_t recordMillis; // [新增] 相对时间回溯
+  uint16_t good;
+  uint16_t normal;
+  uint16_t bad;
+};
+
+GroupRecord allGroupsHistory[MAX_HISTORY_SIZE];
+int historyCount = 0;            // 当前存了多少条
+int historyHead = 0;             // 下一条写入的位置 (Ring Buffer)
+volatile int requestedPage = -1; // [新增] 请求的页码 (-1 表示无请求)
 
 #include "secrets.h"
 
@@ -78,25 +96,64 @@ bool isBleEnabled = true;
 bool oldDeviceConnected = false;
 bool wipeRequested = false; // [New] Flag for remote wipe
 bool isTimeSynced = false;  // [New] Flag for time sync status
+volatile bool uiRefreshRequested =
+    false; // [New] Flag to trigger UI update from callbacks
+volatile bool advertisingRestartRequested =
+    false; // [New] Safer Advertising Restart
 
-const int MAX_HISTORY_SIZE = 100;
+// [Camera Remote Globals]
+BLEHIDDevice *pHidDevice;
+BLECharacteristic *inputKeyboard;
+BLECharacteristic *inputConsumer;
+bool isAutoRecordEnabled = false;
+unsigned long camSequenceStartTime = 0; // 0 = Inactive
+const int CAM_PRE_DELAY = 3000;         // 3s Prepare
+const int CAM_REC_DURATION = 9000;      // 9s Recording
+bool hasSentStart = false;
+bool hasSentStop = false;
 
-struct GroupRecord {
-  uint32_t timestamp;    // Unix Timestamp
-  uint32_t recordMillis; // [新增] 相对时间回溯
-  uint16_t good;
-  uint16_t normal;
-  uint16_t bad;
-};
+// HID Key Definitions (Bitmask for Report ID 2)
+const uint8_t hid_volume_up = 0x01; // Bit 0 = Usage 0xE9
+const uint8_t hid_volume_release = 0x00;
 
-GroupRecord allGroupsHistory[MAX_HISTORY_SIZE];
-int historyCount = 0;            // 当前存了多少条
-int historyHead = 0;             // 下一条写入的位置 (Ring Buffer)
-volatile int requestedPage = -1; // [新增] 请求的页码 (-1 表示无请求)
+// [NEW] Diagnostic HID Helper (Keyboard ID 1)
+void sendHIDKey(uint8_t keycode) {
+  if (deviceConnectedCount > 0 && inputKeyboard != NULL) {
+    uint8_t buffer[8] = {0, 0, keycode, 0, 0, 0, 0, 0};
+    inputKeyboard->setValue(buffer, 8);
+    inputKeyboard->notify();
+
+    delay(20);
+    uint8_t release[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    inputKeyboard->setValue(release, 8);
+    inputKeyboard->notify();
+
+    // [OPTIMIZED] Removed redundant matrix.show()
+    matrix.drawPixel(15, 0, C_GREEN);
+    Serial.printf("HID KB: Sent Keycode 0x%02X\n", keycode);
+  }
+}
+
+// [NEW] Consumer Control Helper (ID 2)
+void sendConsumerKey(uint8_t mask) {
+  if (deviceConnectedCount > 0 && inputConsumer != NULL) {
+    inputConsumer->setValue(&mask, 1);
+    inputConsumer->notify();
+
+    // [OPTIMIZED] Remove redundant matrix.show() to save power and prevent
+    // brownout Visual indicator will be drawn; next main loop iteration will
+    // show it.
+    matrix.drawPixel(15, 0, C_GREEN);
+    Serial.printf("HID CONS: Sent Mask 0x%02X\n", mask);
+  } else {
+    Serial.println("HID Error: inputConsumer NULL or No Connection");
+  }
+}
 
 // Forward Declarations
 void saveData();
 void sendHistoryPage(int page);
+void playSound(int type); // [Fix] Forward Declaration
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
@@ -113,17 +170,25 @@ class MyServerCallbacks : public BLEServerCallbacks {
       Serial.println("Forced Notifications ON");
     }
 
-    BLEDevice::startAdvertising(); // [Fix] Allow multiple connections
     Serial.print("Device Connected. Count: ");
     Serial.println(deviceConnectedCount);
-  };
+    uiRefreshRequested = true;          // Refresh LED
+    advertisingRestartRequested = true; // Request advertising restart safely
+  }
   void onDisconnect(BLEServer *pServer) {
     deviceConnectedCount--;
     if (deviceConnectedCount < 0)
       deviceConnectedCount = 0;
-    BLEDevice::startAdvertising(); // Ensure advertising restarts
+
+    // Request restart in main loop
+    advertisingRestartRequested = true;
+
     Serial.print("Device Disconnected. Count: ");
     Serial.println(deviceConnectedCount);
+    // Reset time sync status on disconnect if desired,
+    // but usually we keep time if it was set.
+    // Ideally we might want to show "Connected" status lost.
+    uiRefreshRequested = true;
   }
 };
 
@@ -157,6 +222,7 @@ class TimeCallbacks : public BLECharacteristicCallbacks {
         settimeofday(&now, NULL);
         isTimeSynced = true; // [New] Mark time as synced
         Serial.println("Time synced via BLE");
+        uiRefreshRequested = true; // Refresh LED
 
         // [新增] 相对时间回溯修复
 
@@ -445,20 +511,24 @@ void drawPlayingUI() {
     score = (totalGood * 100 + totalNormal * 50) / totalShots;
   }
 
+  // [Restore] Total Score Display
   matrix.setTextColor(C_WHITE);
   if (score == 100) {
     matrix.setCursor(3, 13);
     matrix.print(100);
   } else {
-    // 显示整数分数
     int scoreX = (score >= 10) ? 4 : 7;
     matrix.setCursor(scoreX, 13);
     matrix.print(score);
   }
 
-  // 底部本组详情
-  matrix.drawPixel(2, 14, C_WHITE);
-  matrix.drawPixel(2, 15, C_WHITE);
+  // [New] Camera Mode Indicator (Top Left Cyan Dot)
+  if (isAutoRecordEnabled) {
+    matrix.drawPixel(0, 0, matrix.Color(0, 50, 50)); // Cyan (Dim)
+  }
+
+  // [UI Update] Condense to Row 14 only
+  // 底部本组详情 (Row 14 only)
   for (int i = 0; i < 10; i++) {
     int x = 3 + i;
     uint16_t color = C_DIM;
@@ -471,10 +541,46 @@ void drawPlayingUI() {
         color = C_RED;
     }
     matrix.drawPixel(x, 14, color);
-    matrix.drawPixel(x, 15, color);
   }
+  // White bounding dots for score row
+  matrix.drawPixel(2, 14, C_WHITE);
   matrix.drawPixel(13, 14, C_WHITE);
-  matrix.drawPixel(13, 15, C_WHITE);
+
+  // Row 15: Camera Remote Status
+  if (isAutoRecordEnabled) {
+    // Logic:
+    long elapsed = 0;
+    if (camSequenceStartTime > 0) {
+      elapsed = millis() - camSequenceStartTime;
+    }
+
+    int firstPixelOn = 0; // Default: All On (Idle)
+
+    if (camSequenceStartTime > 0) {
+      firstPixelOn = elapsed / 1000;
+      if (firstPixelOn > 12)
+        firstPixelOn = 12;
+    }
+
+    // Draw Pixels
+    // Offset by 2 to center (2-13). Total 12 pixels.
+    for (int i = 0; i < 12; i++) {
+      int x = 2 + i;
+      if (i >= firstPixelOn) {
+        if (i < 3)
+          matrix.drawPixel(x, 15, C_YELLOW);
+        else
+          matrix.drawPixel(x, 15, C_GREEN);
+      } else {
+        matrix.drawPixel(x, 15, 0); // Off
+      }
+    }
+
+  } else {
+    // Pure Score Mode: Row 15 Empty
+    for (int i = 0; i < 16; i++)
+      matrix.drawPixel(i, 15, 0);
+  }
 
   // [Fix] 绘制蓝牙指示灯 (右上角 15,0)
   if (isBleEnabled) {
@@ -754,7 +860,19 @@ void resetGame() {
   delay(1000);
   currentState = STATE_PLAYING; // 强制回游戏模式
   drawPlayingUI();
+  drawPlayingUI();
   playSound(7);
+}
+
+// [NEW] Camera Sequence Trigger (Called when scoring)
+void triggerCameraSequence() {
+  if (!isAutoRecordEnabled)
+    return;
+  camSequenceStartTime = millis();
+  hasSentStart = false;
+  hasSentStop = false;
+  // Force UI update immediately to show full yellow/green bars
+  drawPlayingUI();
 }
 
 // ================= 9. 屏保 =================
@@ -843,8 +961,7 @@ void setup() {
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
   // History Characteristic (Read/Notify)
-  // History Characteristic (Read/Notify/Write ->
-  // Read/Notify/Indicate/Write/WriteNR)
+  // History Characteristic (Read/Notify/Indicate/Write/WriteNR)
   pHistoryCharacteristic = pService->createCharacteristic(
       CHAR_HISTORY_UUID,
       BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY |
@@ -859,15 +976,79 @@ void setup() {
       CHAR_TIME_UUID,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   pTimeCharacteristic->setCallbacks(new TimeCallbacks());
+  pService->start(); // Start primary service
 
-  pService->start();
+  // [NEW] HID Service Initialization
+  pHidDevice = new BLEHIDDevice(pServer);
+  inputKeyboard =
+      pHidDevice->inputReport(1); // restored ID to match library requirements
+  // inputConsumer = pHidDevice->inputReport(2); // V16: Removed to prevent
+  // stack crash
+
+  pHidDevice->manufacturer()->setValue("Espressif");
+  pHidDevice->pnp(0x02, 0xe502, 0xa111, 0x0210);
+  pHidDevice->hidInfo(0x00, 0x01);
+
+  // [IMPORTANT] BLE Security - Consumer Control often mandates Bonding
+  BLESecurity *pSecurity = new BLESecurity();
+  pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+  pSecurity->setCapability(ESP_IO_CAP_NONE);
+  pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+
+  // Keyboard Report Map (Minimal, No Report ID)
+  const uint8_t reportMap[] = {
+      0x05, 0x01, // USAGE_PAGE (Generic Desktop)
+      0x09, 0x06, // USAGE (Keyboard)
+      0xa1, 0x01, // COLLECTION (Application)
+      // 0x85, 0x01,                 // <--- REMOVED Report ID for max
+      // compatibility
+      0x05, 0x07, //   USAGE_PAGE (Keyboard)
+      0x19, 0xe0, //   USAGE_MINIMUM (Keyboard LeftControl)
+      0x29, 0xe7, //   USAGE_MAXIMUM (Keyboard Right GUI)
+      0x15, 0x00, //   LOGICAL_MINIMUM (0)
+      0x25, 0x01, //   LOGICAL_MAXIMUM (1)
+      0x75, 0x01, //   REPORT_SIZE (1)
+      0x95, 0x08, //   REPORT_COUNT (8)
+      0x81, 0x02, //   INPUT (Data,Var,Abs)
+      0x95, 0x01, //   REPORT_COUNT (1)
+      0x75, 0x08, //   REPORT_SIZE (8)
+      0x81, 0x03, //   INPUT (Cnst,Var,Abs)
+      0x95, 0x06, //   REPORT_COUNT (6)
+      0x75, 0x08, //   REPORT_SIZE (8)
+      0x15, 0x00, //   LOGICAL_MINIMUM (0)
+      0x25, 0x65, //   LOGICAL_MAXIMUM (101)
+      0x05, 0x07, //   USAGE_PAGE (Keyboard)
+      0x19, 0x00, //   USAGE_MINIMUM (Reserved)
+      0x29, 0x65, //   USAGE_MAXIMUM (Keyboard Application)
+      0x81, 0x00, //   INPUT (Data,Ary,Abs)
+      0xc0        // END_COLLECTION
+  };
+
+  pHidDevice->reportMap((uint8_t *)reportMap, sizeof(reportMap));
+  pHidDevice->startServices();
+
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  // Default advertising interval is ~100ms which is much lighter on CPU than
-  // 0x06 pAdvertising->setMinPreferred(0x06);
-  // pAdvertising->setMinPreferred(0x12);
+  // [IMPORTANT] HID Mandatory Flags & Identity
+  BLEAdvertisementData oAdvData = BLEAdvertisementData();
+  oAdvData.setFlags(ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
+  oAdvData.setAppearance(0x03C1); // [Keyboard] Ensure it shows as a keyboard
+  oAdvData.setCompleteServices(BLEUUID(uint16_t(0x1812))); // HID Service
+  pAdvertising->setAdvertisementData(oAdvData);
+
+  pAdvertising->addServiceUUID(SERVICE_UUID); // Our control service
+
+  // [Fix] Explicitly set Scan Response to ensure Name + Service are visible
+  BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
+  oScanResponseData.setName("Pixel Caddy");
+  oScanResponseData.setCompleteServices(BLEUUID(SERVICE_UUID));
+  pAdvertising->setScanResponseData(oScanResponseData);
+
+  pAdvertising->setMinPreferred(
+      0x06); // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+
   BLEDevice::startAdvertising();
+
   Serial.println("BLE Started");
 
   // [NEW] Splash Screen "GO"
@@ -1006,7 +1187,44 @@ void loop() {
     return;
   }
 
+  // [NEW] Camera Mode Toggle (Green + Yellow) - High Priority Global Check
+  if (rGood == LOW && rNorm == LOW) {
+    isAutoRecordEnabled = !isAutoRecordEnabled;
+
+    // Feedback
+    matrix.fillScreen(0);
+    matrix.setTextColor(isAutoRecordEnabled ? C_GREEN : C_RED);
+    matrix.setCursor(2, 6);
+    matrix.print("CAM");
+    matrix.setCursor(2, 13);
+    matrix.print(isAutoRecordEnabled ? "ON" : "OFF");
+
+    // Update Top-Left Dot immediately
+    if (isAutoRecordEnabled)
+      matrix.drawPixel(0, 0, matrix.Color(0, 50, 50));
+
+    matrix.show();
+    playSound(isAutoRecordEnabled ? 5 : 2);
+
+    // Wait for release
+    while (digitalRead(PIN_BTN_GOOD) == LOW ||
+           digitalRead(PIN_BTN_NORMAL) == LOW)
+      delay(10);
+
+    // Sync states to prevent phantom triggers
+    lastStateGood = HIGH;
+    lastStateNormal = HIGH;
+    lastTriggerTime = millis();
+
+    // Restore UI
+    if (currentState == STATE_PLAYING)
+      drawPlayingUI();
+
+    return;
+  }
+
   // 4. 唤醒逻辑
+
   if (anyKeyPressed) {
     lastActivityTime = now;
     if (isScreenSaver) {
@@ -1049,23 +1267,29 @@ void loop() {
         lastTriggerTime = now;
         if (!longPressHandledGood)
           triggerShot(1);
+        triggerCameraSequence(); // [NEW] Auto Record
       }
 
-      // 黄键
+      // 黄键 (Normal 计分 / 长按撤销 / 组合键: 蓝牙开关 or 相机开关)
       if (rNorm == LOW && lastStateNormal == HIGH) {
+
         lastTriggerTime = now;
         pressTimeNormal = now;
         longPressHandledNormal = false;
       }
+      // Check for Long Press
       if (rNorm == LOW && !longPressHandledNormal &&
           (now - pressTimeNormal > LONG_PRESS_DURATION)) {
+        // Normal Long Press -> Undo
         triggerUndo();
         longPressHandledNormal = true;
       }
       if (rNorm == HIGH && lastStateNormal == LOW) {
         lastTriggerTime = now;
-        if (!longPressHandledNormal)
+        if (!longPressHandledNormal) {
           triggerShot(2);
+          triggerCameraSequence(); // [NEW] Auto Record
+        }
       }
 
       // 红键
@@ -1081,15 +1305,17 @@ void loop() {
       }
       if (rBad == HIGH && lastStateBad == LOW) {
         lastTriggerTime = now;
-        if (!longPressHandledBad)
+        if (!longPressHandledBad) {
+
           triggerShot(3);
+          triggerCameraSequence(); // [NEW] Auto Record
+        }
       }
 
       lastStateGood = rGood;
       lastStateNormal = rNorm;
       lastStateBad = rBad;
     }
-
   } else if (currentState == STATE_SUMMARY_GROUP) {
     // ------ 小组结算模式 ------
 
@@ -1152,7 +1378,6 @@ void loop() {
         drawPlayingUI();
       }
     }
-
   } else if (currentState == STATE_SUMMARY_FINAL) {
     // ------ 全场结算模式 ------
 
@@ -1166,8 +1391,59 @@ void loop() {
     // 在全场结算模式下，按键目前设计为无反应（只能看）
     // 直到用户使用 "智能复位" (红+绿) 重新开始比赛
     // 只是为了防止死锁，更新按键状态
-    lastStateGood = rGood;
-    lastStateNormal = rNorm;
     lastStateBad = rBad;
+  }
+
+  // [New] UI Refresh Handler
+  if (uiRefreshRequested) {
+    uiRefreshRequested = false;
+    if (currentState == STATE_PLAYING) {
+      drawPlayingUI();
+    } else if (currentState == STATE_SUMMARY_GROUP) {
+      drawGroupSummary();
+    } else if (currentState == STATE_SUMMARY_FINAL) {
+      drawFinalSummary();
+    }
+  }
+
+  // [NEW] Robust Advertising Logic (Event-Driven)
+  if (advertisingRestartRequested) {
+    advertisingRestartRequested = false;
+    // Only restart if we have room for more connections (Max 3)
+    if (deviceConnectedCount < 3) {
+      Serial.println("Restarting Advertising for Multi-Connect...");
+      delay(10);
+      pServer->getAdvertising()->start();
+    }
+  }
+
+  // [NEW] Camera Sequence Logic (Non-blocking)
+  if (isAutoRecordEnabled && camSequenceStartTime > 0) {
+    long elapsed = millis() - camSequenceStartTime;
+
+    // Phase 1: Camera Trigger (3s)
+    if (elapsed >= CAM_PRE_DELAY && !hasSentStart) {
+      sendHIDKey(0x28); // Send Enter (Return)
+      hasSentStart = true;
+      playSound(1);
+    }
+
+    // Phase 2: Camera Trigger (12s)
+    if (elapsed >= (CAM_PRE_DELAY + CAM_REC_DURATION) && !hasSentStop) {
+      sendHIDKey(0x28); // Send Enter (Return)
+      hasSentStop = true;
+      camSequenceStartTime = 0; // Reset
+      playSound(2);             // Stop Beep
+      drawPlayingUI();          // Restore to full bar
+    }
+
+    // Update LED countdown only when the second changes
+    static int lastDisplayedSeconds = -1;
+    int currentSeconds = elapsed / 1000;
+
+    if (currentSeconds != lastDisplayedSeconds) {
+      lastDisplayedSeconds = currentSeconds;
+      drawPlayingUI();
+    }
   }
 }

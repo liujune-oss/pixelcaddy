@@ -326,7 +326,10 @@
             try {
                 updateStatus("Searching...");
                 device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'Pixel Caddy' }],
+                    filters: [
+                        { name: 'Pixel Caddy' },
+                        { services: [SERVICE_UUID] }
+                    ],
                     optionalServices: [SERVICE_UUID]
                 });
 
