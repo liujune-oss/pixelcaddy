@@ -134,6 +134,10 @@
 <body>
     <div class="container">
         <h1>Pixel Caddy Sync v1.0</h1>
+        <div id="batteryStatus" style="margin-bottom: 15px; display: none;">
+            <span style="font-size: 1.5rem;">🔋</span>
+            <span id="batteryPercent" style="font-size: 1.2rem; font-weight: bold; color: #00ff88;">--%</span>
+        </div>
         <button id="connectBtn">📡 Connect & Sync</button>
         <div class="status" id="status">Ready to connect...</div>
 
@@ -178,8 +182,9 @@
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_HISTORY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26ac";
         const CHAR_TIME_UUID = "87a7d400-5343-4565-a9b7-1601b0034876";
+        const CHAR_BATTERY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a1";
 
-        let device, server, service, historyChar, timeChar;
+        let device, server, service, historyChar, timeChar, batteryChar;
         let historyData = {};
         let currentPage = 0;
         let myChart = null;
@@ -344,6 +349,19 @@
 
                 timeChar = await service.getCharacteristic(CHAR_TIME_UUID);
 
+                // [新增] 订阅电池电量
+                try {
+                    batteryChar = await service.getCharacteristic(CHAR_BATTERY_UUID);
+                    await batteryChar.startNotifications();
+                    batteryChar.addEventListener('characteristicvaluechanged', handleBatteryNotification);
+                    // 读取初始值
+                    const batteryValue = await batteryChar.readValue();
+                    updateBatteryDisplay(new TextDecoder().decode(batteryValue));
+                    document.getElementById('batteryStatus').style.display = 'block';
+                } catch (e) {
+                    console.warn("Battery characteristic not available:", e);
+                }
+
                 document.getElementById('connectBtn').style.display = 'none';
                 document.getElementById('historyCard').classList.add('visible');
 
@@ -360,6 +378,27 @@
             } catch (error) {
                 console.error("Connect Error:", error);
                 updateStatus("Error: " + error.message);
+            }
+        }
+
+        function handleBatteryNotification(event) {
+            const value = event.target.value;
+            const decoder = new TextDecoder('utf-8');
+            const percent = decoder.decode(value);
+            updateBatteryDisplay(percent);
+        }
+
+        function updateBatteryDisplay(percent) {
+            const el = document.getElementById('batteryPercent');
+            const pct = parseInt(percent) || 0;
+            el.textContent = pct + '%';
+            // 根据电量变色
+            if (pct <= 20) {
+                el.style.color = '#ff4444'; // 红色
+            } else if (pct <= 50) {
+                el.style.color = '#ffcc00'; // 黄色
+            } else {
+                el.style.color = '#00ff88'; // 绿色
             }
         }
 

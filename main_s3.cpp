@@ -1,5 +1,5 @@
 /*
- * Pixel Caddy - Mark 4 (Pro Analytics Edition)
+ * Pixel Caddy - Mark 4 (Pro Analytics Edition) - ESP32-S3 Version
  * --------------------------------------------
  * 核心功能:
  * 1. 📊 [新增] 结算系统:
@@ -14,6 +14,7 @@
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
 
+#include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
@@ -55,12 +56,13 @@ volatile int requestedPage = -1; // [新增] 请求的页码 (-1 表示无请求
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASSWORD;
 
-// ================= 2. 硬件引脚 =================
-#define PIN_MATRIX 9     // D9 (GPIO 9)
-#define PIN_BTN_GOOD 4   // D2
-#define PIN_BTN_NORMAL 2 // D0
-#define PIN_BTN_BAD 3    // D1
-#define PIN_BUZZER 21    // D6 (GPIO 21)
+// ================= 2. 硬件引脚 (ESP32-S3) =================
+#define PIN_MATRIX 8     // D9 (GPIO 8)
+#define PIN_BTN_GOOD 2   // D1 (GPIO 2)
+#define PIN_BTN_BAD 3    // D2 (GPIO 3)
+#define PIN_BTN_NORMAL 4 // D3 (GPIO 4)
+#define PIN_BUZZER 1     // D0 (GPIO 1)
+#define PIN_BATTERY 5    // D4 (GPIO 5) - 电池电压 ADC
 
 // ================= 3. 屏幕与颜色 =================
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(
@@ -82,15 +84,22 @@ bool isOTAMode = false;
 String ipSuffix = "";
 bool isScreenSaver = false;
 
+// ================= [S3 DUAL-CORE] LED 刷新任务 =================
+TaskHandle_t ledTaskHandle = NULL;
+SemaphoreHandle_t displayMutex = NULL;
+volatile bool displayNeedsUpdate = false;
+
 // ================= BLE Objects & Logic =================
 #define SERVICE_UUID "5fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHAR_HISTORY_UUID                                                      \
   "beb5483e-36e1-4688-b7f5-ea07361b26ac" // Changed to 'ac' to bust cache again
 #define CHAR_TIME_UUID "87a7d400-5343-4565-a9b7-1601b0034876"
+#define CHAR_BATTERY_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a1" // 电池电量
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pHistoryCharacteristic = NULL;
 BLECharacteristic *pTimeCharacteristic = NULL;
+BLECharacteristic *pBatteryCharacteristic = NULL; // [新增] 电池特征值
 int deviceConnectedCount = 0; // [Fix] Counter instead of bool
 bool isBleEnabled = true;
 bool oldDeviceConnected = false;
@@ -100,6 +109,9 @@ volatile bool uiRefreshRequested =
     false; // [New] Flag to trigger UI update from callbacks
 volatile bool advertisingRestartRequested =
     false; // [New] Safer Advertising Restart
+
+// ================= Audio Object =================
+AudioPlayer audio(PIN_BUZZER);
 
 // [Camera Remote Globals]
 BLEHIDDevice *pHidDevice;
@@ -153,7 +165,8 @@ void sendConsumerKey(uint8_t mask) {
 // Forward Declarations
 void saveData();
 void sendHistoryPage(int page);
-void playSound(int type); // [Fix] Forward Declaration
+// void playSound(int type);    // [DEPRECATED] Old blocking sound
+void requestDisplayUpdate(); // [S3 DUAL-CORE] Request display refresh
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
@@ -266,8 +279,6 @@ void sendRecord(int index, GroupRecord &r) {
 }
 
 // New Paged Sender
-// New Paged Sender
-// New Paged Sender
 void sendHistoryPage(int page) {
   Serial.print("Sending Page ");
   Serial.println(page);
@@ -362,7 +373,6 @@ unsigned long lastScoreTime = 0;
 const int SCORE_COOLDOWN = 1000;
 
 // ================= 5. 数据存取 =================
-// ================= 5. 数据存取 =================
 void loadData() {
   prefs.begin("pixelcaddy", false);
   totalShots = prefs.getInt("total", 0);
@@ -426,34 +436,62 @@ void clearData() {
   prefs.end();
 }
 
-// ================= 6. 辅助功能 =================
+// ================= 电池电量监测 =================
+unsigned long lastBatteryUpdate = 0;
+const unsigned long BATTERY_UPDATE_INTERVAL = 30000; // 30秒更新一次
+int lastBatteryPercent = -1;
+
+// 读取电池电压 (单位: mV)
+int readBatteryVoltage() {
+  // ESP32-S3 ADC: 12-bit (0-4095), 参考电压约 3.3V
+  // 电压分压 1:1，实际电压 = ADC电压 × 2
+  int adcValue = analogRead(PIN_BATTERY);
+  // ADC电压 = adcValue / 4095 * 3300 mV
+  // 电池电压 = ADC电压 * 2 (因为 1:1 分压)
+  int batteryMV = (adcValue * 3300 * 2) / 4095;
+  return batteryMV;
+}
+
+// 转换电压为百分比 (3200mV=0%, 4200mV=100%)
+int getBatteryPercent() {
+  int mv = readBatteryVoltage();
+  if (mv >= 4200)
+    return 100;
+  if (mv <= 3200)
+    return 0;
+  return (mv - 3200) * 100 / 1000;
+}
+
+// 更新电池 BLE 特征值
+void updateBatteryBLE() {
+  if (deviceConnectedCount == 0 || pBatteryCharacteristic == NULL)
+    return;
+
+  int percent = getBatteryPercent();
+  if (percent == lastBatteryPercent)
+    return; // 未变化则不发送
+
+  lastBatteryPercent = percent;
+  String payload = String(percent);
+  pBatteryCharacteristic->setValue((uint8_t *)payload.c_str(),
+                                   payload.length());
+  pBatteryCharacteristic->notify();
+  Serial.printf("Battery: %d%%\n", percent);
+}
+
+// ================= 6. 辅助功能 (Audio Wrapper) =================
+// Replaces old blocking playSound with non-blocking calls
 void playSound(int type) {
-  int pin = PIN_BUZZER;
-  // 简化的音效调用，保持原样
-  if (type == 4) { // 组完成
-    for (int k = 0; k < 3; k++) {
-      for (int i = 0; i < 60; i++) {
-        digitalWrite(pin, HIGH);
-        delayMicroseconds(300);
-        digitalWrite(pin, LOW);
-        delayMicroseconds(300);
-      }
-      delay(80);
-    }
-  } else if (type == 5) { // 胜利
-    for (int i = 0; i < 400; i++) {
-      digitalWrite(pin, HIGH);
-      delayMicroseconds(250);
-      digitalWrite(pin, LOW);
-      delayMicroseconds(250);
-    }
-  } else { // 简单的一声
-    for (int i = 0; i < 100; i++) {
-      digitalWrite(pin, HIGH);
-      delayMicroseconds(200);
-      digitalWrite(pin, LOW);
-      delayMicroseconds(200);
-    }
+  if (type == 4) {        // Group Complete / Success
+    audio.playMario();    // [UPGRADE] Mario Theme!
+  } else if (type == 5) { // Victory / 1-UP
+    audio.play1UP();
+  } else if (type == 1) { // Good
+    audio.playBeep();
+  } else if (type == 3) { // Bad
+    audio.playBad();
+  } else { // Normal / Default
+    audio.playBeep();
   }
 }
 
@@ -479,12 +517,80 @@ uint16_t getColorFromType(int type) {
   }
 }
 
+// ================= [S3 DUAL-CORE] LED 刷新任务与辅助函数 =================
+
+// [新增] 软件功耗限制 (Software Current Limiter)
+// 如果缓冲区总亮度对应的电流超过限制 (如 2000mA)，自动按比例降低所有像素亮度
+void enforcePowerLimit() {
+  uint8_t *pixels = matrix.getPixels();
+  uint32_t totalSum = 0;
+  uint16_t numBytes = 16 * 16 * 3; // 256 pixels * 3 colors
+
+  // 1. 统计当前缓冲区的所有亮度值
+  for (uint16_t i = 0; i < numBytes; i++) {
+    totalSum += pixels[i];
+  }
+
+  // 2. 估算电流 (mA)
+  // 假设全白 (765) = 60mA -> 1个单位值 ≈ 0.0784mA
+  // 加上 ESP32 基础功耗约 100mA
+  float estimatedCurrent = (totalSum * 0.0784) + 100;
+
+  const float MAX_CURRENT_MA = 2000.0; // 限制在 2000mA (安全值)
+
+  // 3. 如果超标，计算缩放比例并应用
+  if (estimatedCurrent > MAX_CURRENT_MA) {
+    float scale = MAX_CURRENT_MA / estimatedCurrent;
+    // Serial.printf("[PWR] Limit triggered! Est: %.0fmA, Scale: %.2f\n",
+    // estimatedCurrent, scale);
+    for (uint16_t i = 0; i < numBytes; i++) {
+      pixels[i] = (uint8_t)(pixels[i] * scale);
+    }
+  }
+}
+
+// LED 刷新任务 (运行在 Core 0，专门负责 matrix.show())
+void ledRefreshTask(void *parameter) {
+  Serial.println("[LED Task] Started on Core 0");
+
+  // [Fix] Initialize matrix on the SAME CORE that calls show()
+  matrix.begin();
+  delay(100);
+
+  while (true) {
+    // 检查是否需要刷新
+    if (displayNeedsUpdate) {
+      // 获取互斥锁 [Recursive]
+      if (xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY) == pdTRUE) {
+        // 执行刷新
+        matrix.show();
+        displayNeedsUpdate = false;
+
+        // 释放互斥锁 [Recursive]
+        xSemaphoreGiveRecursive(displayMutex);
+      }
+    }
+
+    // 短暂延时，避免 CPU 占用过高
+    vTaskDelay(pdMS_TO_TICKS(5)); // 5ms 检查一次
+  }
+}
+
+// 请求显示刷新的安全接口
+void requestDisplayUpdate() {
+  if (xSemaphoreTakeRecursive(displayMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    displayNeedsUpdate = true;
+    xSemaphoreGiveRecursive(displayMutex);
+  }
+}
+
 // ================= 7. UI 绘制逻辑 (分状态) =================
 
 // 7.1 游戏进行中界面
 void drawPlayingUI() {
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
+
   matrix.fillScreen(0);
-  // 顶部进度条
   matrix.drawPixel(2, 0, C_WHITE);
   for (int i = 0; i < 10; i++) {
     int x = 3 + i;
@@ -497,7 +603,6 @@ void drawPlayingUI() {
   }
   matrix.drawPixel(13, 0, C_WHITE);
 
-  // 数字
   matrix.setTextColor(C_GREEN);
   int goodX = (totalGood < 10) ? 4 : 1;
   matrix.setCursor(goodX, 7);
@@ -507,14 +612,11 @@ void drawPlayingUI() {
   matrix.setCursor(shotX, 7);
   matrix.print(totalShots);
 
-  // 综合评分 (Weighted Score)
-  // Good=100, Normal=50, Bad=0
   int score = 0;
   if (totalShots > 0) {
     score = (totalGood * 100 + totalNormal * 50) / totalShots;
   }
 
-  // [Restore] Total Score Display
   matrix.setTextColor(C_WHITE);
   if (score == 100) {
     matrix.setCursor(3, 13);
@@ -525,13 +627,10 @@ void drawPlayingUI() {
     matrix.print(score);
   }
 
-  // [New] Camera Mode Indicator (Top Left Cyan Dot)
   if (isAutoRecordEnabled) {
     matrix.drawPixel(0, 0, matrix.Color(0, 50, 50)); // Cyan (Dim)
   }
 
-  // [UI Update] Condense to Row 14 only
-  // 底部本组详情 (Row 14 only)
   for (int i = 0; i < 10; i++) {
     int x = 3 + i;
     uint16_t color = C_DIM;
@@ -545,28 +644,20 @@ void drawPlayingUI() {
     }
     matrix.drawPixel(x, 14, color);
   }
-  // White bounding dots for score row
   matrix.drawPixel(2, 14, C_WHITE);
   matrix.drawPixel(13, 14, C_WHITE);
 
-  // Row 15: Camera Remote Status
   if (isAutoRecordEnabled) {
-    // Logic:
     long elapsed = 0;
     if (camSequenceStartTime > 0) {
       elapsed = millis() - camSequenceStartTime;
     }
-
-    int firstPixelOn = 0; // Default: All On (Idle)
-
+    int firstPixelOn = 0;
     if (camSequenceStartTime > 0) {
       firstPixelOn = elapsed / 1000;
       if (firstPixelOn > 12)
         firstPixelOn = 12;
     }
-
-    // Draw Pixels
-    // Offset by 2 to center (2-13). Total 12 pixels.
     for (int i = 0; i < 12; i++) {
       int x = 2 + i;
       if (i >= firstPixelOn) {
@@ -578,41 +669,37 @@ void drawPlayingUI() {
         matrix.drawPixel(x, 15, 0); // Off
       }
     }
-
   } else {
-    // Pure Score Mode: Row 15 Empty
     for (int i = 0; i < 16; i++)
       matrix.drawPixel(i, 15, 0);
   }
 
-  // [Fix] 绘制蓝牙指示灯 (右上角 15,0)
   if (isBleEnabled) {
-    uint32_t statusColor = matrix.Color(0, 0, 50); // Default: Standby (Dim)
-
+    uint32_t statusColor = matrix.Color(0, 0, 50);
     if (deviceConnectedCount > 0) {
       if (isTimeSynced) {
-        statusColor = C_BLUE; // Bright Blue (Synced)
+        statusColor = C_BLUE;
       } else {
-        statusColor = matrix.Color(0, 0, 150); // Connected, Waiting for Time
+        statusColor = matrix.Color(0, 0, 150);
       }
     }
     matrix.drawPixel(15, 0, statusColor);
   }
-
-  matrix.show();
+  enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
 }
 
 // 7.2 小组结算界面
 void drawGroupSummary() {
-  matrix.fillScreen(0);
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
 
-  // 第一行：Good
+  matrix.fillScreen(0);
   matrix.setTextColor(C_GREEN);
   int goodX = (groupGoodCount < 10) ? 6 : 3;
   matrix.setCursor(goodX, 6);
   matrix.print(groupGoodCount);
 
-  // 第二行：Normal 和 Bad
   matrix.setTextColor(C_YELLOW);
   int normX = (groupNormalCount < 10) ? 2 : 0;
   matrix.setCursor(normX, 13);
@@ -623,87 +710,86 @@ void drawGroupSummary() {
   matrix.setCursor(badX, 13);
   matrix.print(groupBadCount);
 
-  matrix.show();
+  enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
 }
 
-// 7.3 全场结算界面 (带百分比)
+// 7.3 全场结算界面
 void drawFinalSummary() {
-  matrix.fillScreen(0);
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
 
+  matrix.fillScreen(0);
   int count = 0;
   float percent = 0.0;
   uint16_t color = C_WHITE;
 
-  if (summaryPage == 0) { // Total Good
+  if (summaryPage == 0) {
     count = totalGood;
     if (totalShots > 0)
       percent = (float)totalGood / totalShots * 100.0;
     color = C_GREEN;
-  } else if (summaryPage == 1) { // Total Normal
+  } else if (summaryPage == 1) {
     count = totalNormal;
     if (totalShots > 0)
       percent = (float)totalNormal / totalShots * 100.0;
     color = C_YELLOW;
-  } else { // Total Bad
+  } else {
     count = totalBad;
     if (totalShots > 0)
       percent = (float)totalBad / totalShots * 100.0;
     color = C_RED;
   }
 
-  // 第一行：数量 (颜色)
   matrix.setTextColor(color);
   int xNum = (count >= 100) ? 1 : ((count >= 10) ? 4 : 7);
   matrix.setCursor(xNum, 6);
   matrix.print(count);
 
-  // 第二行：百分比 (白色)
   matrix.setTextColor(C_WHITE);
-  int xPer = 0; // 统一从最左开始
+  int xPer = 0;
   matrix.setCursor(xPer, 14);
   if (percent == 100.0) {
     matrix.print("100");
   } else {
-    matrix.print(percent, 1); // 显示1位小数
+    matrix.print(percent, 1);
   }
 
-  matrix.show();
+  enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
 }
 
-// ================= 8. 逻辑控制 =================
-
-// 处理动画 (边缘呼吸/Edge Breathing)
 void animateSurge(uint16_t c) {
-  // 1. 先显示最新的分数值 (不遮挡数据)
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
   drawPlayingUI();
-
-  // 2. 绘制外圈边框 "呼吸" 效果
-  // Frame 1: 内圈扩张
   matrix.drawRect(1, 1, 14, 14, c);
-  matrix.show();
+
+  enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
+
   delay(80);
 
-  // Frame 2: 外圈高亮 (保持)
-  drawPlayingUI(); // 清除内圈
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
+  drawPlayingUI();
   matrix.drawRect(0, 0, 16, 16, c);
-  matrix.show();
-  delay(150);
 
-  // 动画结束会自动由外部逻辑刷新回正常界面
+  enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
+
+  delay(150);
 }
 
-// 检查是否完成一组
 void checkGroupCompletion() {
   if (groupShots >= 10) {
     delay(200);
-    // 1. 记录本组结果颜色
     int colorType = calculateGroupColorType(groupGoodCount, groupNormalCount);
     if (currentGroupIdx < 10) {
       groupResults[currentGroupIdx] = colorType;
-
-      // [Update] 写入环形缓冲区 (Ring Buffer)
       int writeIdx = historyHead;
-
       allGroupsHistory[writeIdx].good = groupGoodCount;
       allGroupsHistory[writeIdx].normal = groupNormalCount;
       allGroupsHistory[writeIdx].bad = groupBadCount;
@@ -711,38 +797,27 @@ void checkGroupCompletion() {
       time_t now;
       time(&now);
       allGroupsHistory[writeIdx].timestamp = (uint32_t)now;
-      allGroupsHistory[writeIdx].recordMillis = millis(); // 记录此时的开机时长
+      allGroupsHistory[writeIdx].recordMillis = millis();
 
-      // 更新指针
       historyHead = (historyHead + 1) % MAX_HISTORY_SIZE;
       if (historyCount < MAX_HISTORY_SIZE) {
         historyCount++;
       }
-
-      saveData();         // 保存
-      updateHistoryBLE(); // 更新蓝牙
+      saveData();
+      updateHistoryBLE();
     }
-
-    // 2. 播放音效
     playSound(4);
-
-    // 3. 切换状态 -> 小组结算
     currentState = STATE_SUMMARY_GROUP;
     summaryTimer = millis();
     summaryPage = 0;
-
-    // 4. 立即刷新屏幕
     drawGroupSummary();
   }
 }
 
-// 记分触发器
 void triggerShot(int type) {
   if (millis() - lastScoreTime < SCORE_COOLDOWN)
     return;
   lastScoreTime = millis();
-
-  // [Fix] Safety Guard: Prevent >10 shots
   if (groupShots >= 10)
     return;
 
@@ -768,24 +843,17 @@ void triggerShot(int type) {
     animateSurge(C_RED);
     playSound(3);
   }
-
   saveData();
-
-  // 检查是否打完了这组
   checkGroupCompletion();
-
-  // 如果未切换状态，刷新界面
   if (currentState == STATE_PLAYING) {
     drawPlayingUI();
   }
 }
 
-// 撤销
 void triggerUndo() {
   if (groupShots <= 0)
     return;
   int lastType = groupHistory[groupShots - 1];
-
   totalShots--;
   groupShots--;
 
@@ -799,45 +867,50 @@ void triggerUndo() {
     totalBad--;
     groupBadCount--;
   }
-
   groupHistory[groupShots] = 0;
   saveData();
 
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
   matrix.drawRect(0, 0, 16, 16, C_BLUE);
-  matrix.show();
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
+
   playSound(8);
   delay(200);
   drawPlayingUI();
 }
 
-// 亮度调节
 void changeBrightness(int delta) {
   currentBrightness += delta;
-  if (currentBrightness > 100)
-    currentBrightness = 100;
+
+  // 软件限制：5-100
+  if (currentBrightness > BRT_MAX)
+    currentBrightness = BRT_MAX;
   if (currentBrightness < 5)
     currentBrightness = 5;
+
   saveBrightness();
-  matrix.setBrightness(currentBrightness);
+
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
+  matrix.setBrightness(currentBrightness);              // 直接使用 0-100 范围
+  xSemaphoreGiveRecursive(displayMutex);                // [Unlock]
+
   playSound(6);
 
-  // [NEW] Show Brightness Value
   matrix.fillScreen(0);
   matrix.setTextColor(C_WHITE);
-  // Center alignment logic for TomThumb
   int xPos =
       (currentBrightness >= 100) ? 1 : ((currentBrightness >= 10) ? 4 : 7);
   matrix.setCursor(xPos, 10);
   matrix.print(currentBrightness);
-  matrix.show();
-  delay(100); // 缩短延迟以支持连续调整
+  requestDisplayUpdate(); // [S3 DUAL-CORE]
+  delay(100);             // 缩短延迟以支持连续调整
 }
 
-// 重置
 void resetGame() {
   playSound(6);
   matrix.fillScreen(C_BLUE);
-  matrix.show();
+  requestDisplayUpdate(); // [S3 DUAL-CORE]
   totalShots = 0;
   totalGood = 0;
   totalNormal = 0;
@@ -853,34 +926,29 @@ void resetGame() {
   }
   clearData();
   delay(1000);
-  currentState = STATE_PLAYING; // 强制回游戏模式
-  drawPlayingUI();
+  currentState = STATE_PLAYING;
   drawPlayingUI();
   playSound(7);
 }
 
-// [NEW] Camera Sequence Trigger (Called when scoring)
 void triggerCameraSequence() {
   if (!isAutoRecordEnabled)
     return;
   camSequenceStartTime = millis();
   hasSentStart = false;
   hasSentStop = false;
-  // Force UI update immediately to show full yellow/green bars
   drawPlayingUI();
 }
 
-// ================= 9. 屏保 =================
 void checkSleepTimeout() {
   if (!isScreenSaver && (millis() - lastActivityTime > SLEEP_TIMEOUT)) {
     isScreenSaver = true;
     saveData();
     matrix.fillScreen(0);
-    matrix.show();
+    requestDisplayUpdate(); // [S3 DUAL-CORE]
   }
 }
 
-// ================= 10. OTA =================
 void setupOTA() {
   matrix.fillScreen(0);
   matrix.setTextColor(C_BLUE);
@@ -902,7 +970,6 @@ void setupOTA() {
     }
     String fullIP = WiFi.localIP().toString();
     ipSuffix = fullIP.substring(fullIP.lastIndexOf('.') + 1);
-
     matrix.setTextColor(C_BLUE);
     matrix.setCursor(4, 6);
     matrix.print("IP");
@@ -919,13 +986,12 @@ void setupOTA() {
     matrix.setCursor(4, 9);
     matrix.print("AP");
   }
-  matrix.show();
+  matrix.show(); // [OTA Mode] Direct show (no dual-core in OTA)
   ElegantOTA.begin(&server);
   server.begin();
   playSound(5);
 }
 
-// ================= 11. Setup =================
 void setup() {
   pinMode(PIN_BTN_GOOD, INPUT_PULLUP);
   pinMode(PIN_BTN_NORMAL, INPUT_PULLUP);
@@ -933,7 +999,10 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   Serial.begin(115200);
 
-  matrix.begin();
+  // [Audio] 初始化蜂鸣器
+  audio.begin();
+
+  // [Moved to Core 0 Task] matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(20);
   matrix.setRotation(1);
@@ -947,117 +1016,98 @@ void setup() {
 
   loadData();
   matrix.setBrightness(currentBrightness);
-  updateHistoryBLE(); // [新增] 初始化时准备蓝牙数据
+  updateHistoryBLE();
 
-  // [新增] BLE 初始化
   BLEDevice::init("Pixel Caddy");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // History Characteristic (Read/Notify)
-  // History Characteristic (Read/Notify/Indicate/Write/WriteNR)
   pHistoryCharacteristic = pService->createCharacteristic(
-      CHAR_HISTORY_UUID,
-      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY |
-          BLECharacteristic::PROPERTY_INDICATE |
-          BLECharacteristic::PROPERTY_WRITE |
-          BLECharacteristic::PROPERTY_WRITE_NR); // [Fix] Allow No-Response
+      CHAR_HISTORY_UUID, BLECharacteristic::PROPERTY_READ |
+                             BLECharacteristic::PROPERTY_NOTIFY |
+                             BLECharacteristic::PROPERTY_INDICATE |
+                             BLECharacteristic::PROPERTY_WRITE |
+                             BLECharacteristic::PROPERTY_WRITE_NR);
   pHistoryCharacteristic->addDescriptor(new BLE2902());
   pHistoryCharacteristic->setCallbacks(new HistoryCallbacks());
 
-  // Time Characteristic (Write / WriteNR)
   pTimeCharacteristic = pService->createCharacteristic(
       CHAR_TIME_UUID,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   pTimeCharacteristic->setCallbacks(new TimeCallbacks());
-  pService->start(); // Start primary service
 
-  // [NEW] HID Service Initialization
+  // [新增] 电池电量特征值
+  pBatteryCharacteristic = pService->createCharacteristic(
+      CHAR_BATTERY_UUID,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  pBatteryCharacteristic->addDescriptor(new BLE2902());
+
+  pService->start();
+
   pHidDevice = new BLEHIDDevice(pServer);
-  inputKeyboard =
-      pHidDevice->inputReport(1); // restored ID to match library requirements
-  // inputConsumer = pHidDevice->inputReport(2); // V16: Removed to prevent
-  // stack crash
-
+  inputKeyboard = pHidDevice->inputReport(1);
   pHidDevice->manufacturer()->setValue("Espressif");
   pHidDevice->pnp(0x02, 0xe502, 0xa111, 0x0210);
   pHidDevice->hidInfo(0x00, 0x01);
 
-  // [IMPORTANT] BLE Security - Consumer Control often mandates Bonding
   BLESecurity *pSecurity = new BLESecurity();
   pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
   pSecurity->setCapability(ESP_IO_CAP_NONE);
   pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
 
-  // Keyboard Report Map (Minimal, No Report ID)
   const uint8_t reportMap[] = {
-      0x05, 0x01, // USAGE_PAGE (Generic Desktop)
-      0x09, 0x06, // USAGE (Keyboard)
-      0xa1, 0x01, // COLLECTION (Application)
-      // 0x85, 0x01,                 // <--- REMOVED Report ID for max
-      // compatibility
-      0x05, 0x07, //   USAGE_PAGE (Keyboard)
-      0x19, 0xe0, //   USAGE_MINIMUM (Keyboard LeftControl)
-      0x29, 0xe7, //   USAGE_MAXIMUM (Keyboard Right GUI)
-      0x15, 0x00, //   LOGICAL_MINIMUM (0)
-      0x25, 0x01, //   LOGICAL_MAXIMUM (1)
-      0x75, 0x01, //   REPORT_SIZE (1)
-      0x95, 0x08, //   REPORT_COUNT (8)
-      0x81, 0x02, //   INPUT (Data,Var,Abs)
-      0x95, 0x01, //   REPORT_COUNT (1)
-      0x75, 0x08, //   REPORT_SIZE (8)
-      0x81, 0x03, //   INPUT (Cnst,Var,Abs)
-      0x95, 0x06, //   REPORT_COUNT (6)
-      0x75, 0x08, //   REPORT_SIZE (8)
-      0x15, 0x00, //   LOGICAL_MINIMUM (0)
-      0x25, 0x65, //   LOGICAL_MAXIMUM (101)
-      0x05, 0x07, //   USAGE_PAGE (Keyboard)
-      0x19, 0x00, //   USAGE_MINIMUM (Reserved)
-      0x29, 0x65, //   USAGE_MAXIMUM (Keyboard Application)
-      0x81, 0x00, //   INPUT (Data,Ary,Abs)
-      0xc0        // END_COLLECTION
-  };
+      0x05, 0x01, 0x09, 0x06, 0xa1, 0x01, 0x05, 0x07, 0x19, 0xe0, 0x29, 0xe7,
+      0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02, 0x95, 0x01,
+      0x75, 0x08, 0x81, 0x03, 0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
+      0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00, 0xc0};
 
   pHidDevice->reportMap((uint8_t *)reportMap, sizeof(reportMap));
   pHidDevice->startServices();
 
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  // [IMPORTANT] HID Mandatory Flags & Identity
   BLEAdvertisementData oAdvData = BLEAdvertisementData();
   oAdvData.setFlags(ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
-  oAdvData.setAppearance(0x03C1); // [Keyboard] Ensure it shows as a keyboard
-  oAdvData.setCompleteServices(BLEUUID(uint16_t(0x1812))); // HID Service
+  oAdvData.setAppearance(0x03C1);
+  oAdvData.setCompleteServices(BLEUUID(uint16_t(0x1812)));
   pAdvertising->setAdvertisementData(oAdvData);
+  pAdvertising->addServiceUUID(SERVICE_UUID);
 
-  pAdvertising->addServiceUUID(SERVICE_UUID); // Our control service
-
-  // [Fix] Explicitly set Scan Response to ensure Name + Service are visible
   BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
   oScanResponseData.setName("Pixel Caddy");
   oScanResponseData.setCompleteServices(BLEUUID(SERVICE_UUID));
   pAdvertising->setScanResponseData(oScanResponseData);
 
-  pAdvertising->setMinPreferred(
-      0x06); // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x06);
   pAdvertising->setMinPreferred(0x12);
-
   BLEDevice::startAdvertising();
 
-  Serial.println("BLE Started");
+  // [S3 DUAL-CORE] Initialize mutex and LED refresh task
+  // [Fix] Use RECURSIVE Mutex to allow nested locking from draw functions
+  displayMutex = xSemaphoreCreateRecursiveMutex();
+  if (displayMutex == NULL) {
+    Serial.println("[ERROR] Failed to create display mutex!");
+  }
 
-  // [NEW] Splash Screen "GO"
+  // Create LED refresh task on Core 1 (Avoid BLE interrupts on Core 0)
+  xTaskCreatePinnedToCore(ledRefreshTask, // Task function
+                          "LED_Refresh",  // Task name
+                          4096,           // Stack size
+                          NULL,           // Parameters
+                          2,              // Priority (higher than default)
+                          &ledTaskHandle, // Task handle
+                          1 // [Fix] Pin to Core 1 (BLE is on Core 0)
+  );
+
   matrix.fillScreen(0);
   matrix.setTextColor(C_GREEN);
   matrix.setCursor(4, 10);
   matrix.print("GO");
-  matrix.show();
+  requestDisplayUpdate(); // [S3 DUAL-CORE]
   delay(500);
 
-  // [NEW] Intelligent State Recovery & UI Initialization
   if (currentState == STATE_PLAYING) {
     if (groupShots >= 10) {
-      // Bug Fix: Resume the interrupted transition
       checkGroupCompletion();
     } else {
       drawPlayingUI();
@@ -1067,23 +1117,26 @@ void setup() {
   } else if (currentState == STATE_SUMMARY_FINAL) {
     drawFinalSummary();
   }
-
   lastActivityTime = millis();
 }
 
-// ================= 12. Loop (核心修改) =================
 void loop() {
+  // [Audio] 更新音频播放器 (非阻塞)
+  audio.update();
+
+  // [电池] 定期更新电池电量 (每30秒)
+  if (millis() - lastBatteryUpdate > BATTERY_UPDATE_INTERVAL) {
+    lastBatteryUpdate = millis();
+    updateBatteryBLE();
+  }
+
   if (isOTAMode) {
     ElegantOTA.loop();
     return;
   }
 
-  // [New] Handle Wipe Request
   if (wipeRequested) {
     wipeRequested = false;
-    Serial.println("Wiping Data...");
-
-    // 1. Clear Memory
     historyHead = 0;
     historyCount = 0;
     totalShots = 0;
@@ -1092,167 +1145,123 @@ void loop() {
     totalBad = 0;
     currentGroupIdx = 0;
     groupShots = 0;
-
-    // Clear Arrays
     for (int i = 0; i < MAX_HISTORY_SIZE; i++) {
       memset(&allGroupsHistory[i], 0, sizeof(GroupRecord));
     }
     for (int i = 0; i < 10; i++) {
       groupResults[i] = 0;
     }
-
-    // 2. Save Empty State
     saveData();
-
-    // 3. Feedback
-    playSound(6); // Special beep
-    Serial.println("Data Wiped Successfully");
-
-    // 4. Force UI Refresh
+    playSound(6);
     if (currentState == STATE_PLAYING) {
       drawPlayingUI();
     }
   }
 
-  // [New] Process Paged History Request (Non-blocking)
   if (requestedPage >= 0) {
-    // [DEADLOCK FIX] Wait for Write Response to clear before Indicating
-    // Prevents browser from choking on simultaneous ACKs
-    delay(500); // Re-enabled: Essential for stable Web Bluetooth operation
+    delay(500);
     sendHistoryPage(requestedPage);
     requestedPage = -1;
   }
 
-  // 1. 屏保检查
   checkSleepTimeout();
 
-  // 2. 读取按键
   int rGood = digitalRead(PIN_BTN_GOOD);
   int rNorm = digitalRead(PIN_BTN_NORMAL);
   int rBad = digitalRead(PIN_BTN_BAD);
   unsigned long now = millis();
   bool anyKeyPressed = (rGood == LOW || rNorm == LOW || rBad == LOW);
 
-  // [新增] 蓝牙开关组合键 (Normal + Bad)
   if (rNorm == LOW && rBad == LOW) {
-    // 切换状态
     isBleEnabled = !isBleEnabled;
-
     if (isBleEnabled) {
       BLEDevice::startAdvertising();
-      playSound(3); // 开提示音
+      playSound(3);
     } else {
       BLEDevice::getAdvertising()->stop();
-      // 简单处理：停止广播，若要断开现有连接可添加 pServer->disconnect(0)
-      playSound(2); // 关提示音
+      playSound(2);
     }
-
-    // 刷新界面 (更新右上角蓝点)
     if (currentState == STATE_PLAYING) {
       drawPlayingUI();
     }
-
-    // 防误触：等待释放
     while (digitalRead(PIN_BTN_NORMAL) == LOW ||
            digitalRead(PIN_BTN_BAD) == LOW)
       delay(10);
-
-    // 重置按键状态，防止触发单球计数
     lastStateNormal = HIGH;
     lastStateBad = HIGH;
     lastTriggerTime = millis();
     return;
   }
 
-  // 3. 智能复位 (全局有效)
   if (rGood == LOW && rBad == LOW) {
     resetGame();
-    // Wait for buttons to be released
     while (digitalRead(PIN_BTN_GOOD) == LOW || digitalRead(PIN_BTN_BAD) == LOW)
       delay(10);
-
-    // Fix: Synchronize button states to prevent phantom triggers on release
     lastStateGood = HIGH;
     lastStateNormal = HIGH;
     lastStateBad = HIGH;
-
     lastTriggerTime = millis();
     if (isScreenSaver)
       isScreenSaver = false;
     return;
   }
 
-  // [NEW] Camera Mode Toggle (Green + Yellow) - High Priority Global Check
   if (rGood == LOW && rNorm == LOW) {
     isAutoRecordEnabled = !isAutoRecordEnabled;
 
-    // Feedback
+    xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
     matrix.fillScreen(0);
     matrix.setTextColor(isAutoRecordEnabled ? C_GREEN : C_RED);
     matrix.setCursor(2, 6);
     matrix.print("CAM");
     matrix.setCursor(2, 13);
     matrix.print(isAutoRecordEnabled ? "ON" : "OFF");
-
-    // Update Top-Left Dot immediately
     if (isAutoRecordEnabled)
       matrix.drawPixel(0, 0, matrix.Color(0, 50, 50));
+    matrix
+        .show(); // Note: direct show() is okay if we hold the lock, but
+                 // requestDisplayUpdate is better. However, loop() might use
+                 // show() directly for immediate blocking feedback. But since
+                 // ledRefreshTask is running, better to use
+                 // requestDisplayUpdate OR just hold lock and show. Current
+                 // code uses matrix.show(). Since we hold the lock, it's safe!
+    xSemaphoreGiveRecursive(displayMutex); // [Unlock]
 
-    matrix.show();
     playSound(isAutoRecordEnabled ? 5 : 2);
-
-    // Wait for release
     while (digitalRead(PIN_BTN_GOOD) == LOW ||
            digitalRead(PIN_BTN_NORMAL) == LOW)
       delay(10);
-
-    // Sync states to prevent phantom triggers
     lastStateGood = HIGH;
     lastStateNormal = HIGH;
     lastTriggerTime = millis();
-
-    // Restore UI
     if (currentState == STATE_PLAYING)
       drawPlayingUI();
-
     return;
   }
-
-  // 4. 唤醒逻辑
 
   if (anyKeyPressed) {
     lastActivityTime = now;
     if (isScreenSaver) {
       isScreenSaver = false;
-      // 恢复显示当前状态
       if (currentState == STATE_PLAYING)
         drawPlayingUI();
       else if (currentState == STATE_SUMMARY_GROUP)
         drawGroupSummary();
       else if (currentState == STATE_SUMMARY_FINAL)
         drawFinalSummary();
-
-      // 注意：如果是唤醒，我们应该消耗掉这次按键，防止误触发记分
-      // Consume the wake-up event
       return;
     }
   }
 
-  // 5. 状态机逻辑
   if (currentState == STATE_PLAYING) {
-    // ------ 游戏模式 ------
-
-    // 只有打满10组后，这里会稍微挡一下，防止额外记分
     if (currentGroupIdx >= 10 && groupShots == 0)
       return;
-
     if (now - lastTriggerTime > DEBOUNCE_LOCKOUT) {
-      // 绿键
       if (rGood == LOW && lastStateGood == HIGH) {
         lastTriggerTime = now;
         pressTimeGood = now;
         longPressHandledGood = false;
-        lastBrtAdjustTime = 0;
+        lastBrtAdjustTime = 0; // 重置调整时间
       }
       // 长按2秒后开始增加亮度，之后每1秒增加一次
       if (rGood == LOW && (now - pressTimeGood > LONG_PRESS_DURATION)) {
@@ -1272,8 +1281,8 @@ void loop() {
         lastTriggerTime = now;
         if (!longPressHandledGood)
           triggerShot(1);
-        triggerCameraSequence(); // [NEW] Auto Record
-        lastBrtAdjustTime = 0;
+        triggerCameraSequence();
+        lastBrtAdjustTime = 0; // 松开按键时重置
 
         // 如果是长按松手（即刚调完亮度），恢复界面
         if (longPressHandledGood) {
@@ -1286,17 +1295,13 @@ void loop() {
         }
       }
 
-      // 黄键 (Normal 计分 / 长按撤销 / 组合键: 蓝牙开关 or 相机开关)
       if (rNorm == LOW && lastStateNormal == HIGH) {
-
         lastTriggerTime = now;
         pressTimeNormal = now;
         longPressHandledNormal = false;
       }
-      // Check for Long Press
       if (rNorm == LOW && !longPressHandledNormal &&
           (now - pressTimeNormal > LONG_PRESS_DURATION)) {
-        // Normal Long Press -> Undo
         triggerUndo();
         longPressHandledNormal = true;
       }
@@ -1304,16 +1309,15 @@ void loop() {
         lastTriggerTime = now;
         if (!longPressHandledNormal) {
           triggerShot(2);
-          triggerCameraSequence(); // [NEW] Auto Record
+          triggerCameraSequence();
         }
       }
 
-      // 红键
       if (rBad == LOW && lastStateBad == HIGH) {
         lastTriggerTime = now;
         pressTimeBad = now;
         longPressHandledBad = false;
-        lastBrtAdjustTime = 0;
+        lastBrtAdjustTime = 0; // 重置调整时间
       }
       // 长按2秒后开始减少亮度，之后每1秒减少一次
       if (rBad == LOW && (now - pressTimeBad > LONG_PRESS_DURATION)) {
@@ -1332,11 +1336,10 @@ void loop() {
       if (rBad == HIGH && lastStateBad == LOW) {
         lastTriggerTime = now;
         if (!longPressHandledBad) {
-
           triggerShot(3);
-          triggerCameraSequence(); // [NEW] Auto Record
+          triggerCameraSequence();
         }
-        lastBrtAdjustTime = 0;
+        lastBrtAdjustTime = 0; // 松开按键时重置
 
         // 如果是长按松手（即刚调完亮度），恢复界面
         if (longPressHandledBad) {
@@ -1348,16 +1351,11 @@ void loop() {
             drawFinalSummary();
         }
       }
-
       lastStateGood = rGood;
       lastStateNormal = rNorm;
       lastStateBad = rBad;
     }
   } else if (currentState == STATE_SUMMARY_GROUP) {
-    // ------ 小组结算模式 ------
-
-    // 任意键退出
-    // 检测按键按下的一瞬间 (Falling Edge)
     bool btnPressed = false;
     if ((rGood == LOW && lastStateGood == HIGH) ||
         (rNorm == LOW && lastStateNormal == HIGH) ||
@@ -1369,33 +1367,20 @@ void loop() {
     lastStateBad = rBad;
 
     if (btnPressed) {
-      playSound(7); // 提示音
-
-      // [Fix] Wait for button release to prevent accidental trigger in next
-      // state
+      playSound(7);
       unsigned long releaseStart = millis();
       while (digitalRead(PIN_BTN_GOOD) == LOW ||
              digitalRead(PIN_BTN_NORMAL) == LOW ||
              digitalRead(PIN_BTN_BAD) == LOW) {
         delay(10);
-        // Failsafe exit after 2 seconds (in case of hardware stuck)
         if (millis() - releaseStart > 2000)
           break;
       }
-
-      // [CRITICAL FIX] Sync last states to HIGH so Playing Mode doesn't see a
-      // release edge
       lastStateGood = HIGH;
       lastStateNormal = HIGH;
       lastStateBad = HIGH;
-
-      // Update timer to ensure next state ignores initial noise
       lastTriggerTime = millis();
-
-      // 退出结算逻辑
-      currentGroupIdx++; // 正式进入下一组
-
-      // 清空小组数据
+      currentGroupIdx++;
       groupShots = 0;
       groupGoodCount = 0;
       groupNormalCount = 0;
@@ -1404,34 +1389,24 @@ void loop() {
         groupHistory[i] = 0;
 
       if (currentGroupIdx >= 10) {
-        // 如果打完10组了，进入全场结算
         currentState = STATE_SUMMARY_FINAL;
         summaryPage = 0;
         summaryTimer = millis();
         drawFinalSummary();
       } else {
-        // 否则回到游戏继续打
         currentState = STATE_PLAYING;
         drawPlayingUI();
       }
     }
   } else if (currentState == STATE_SUMMARY_FINAL) {
-    // ------ 全场结算模式 ------
-
-    // 1. 自动轮播 (2秒) Total Stats
     if (now - summaryTimer > SUMMARY_INTERVAL) {
       summaryTimer = now;
       summaryPage = (summaryPage + 1) % 3;
       drawFinalSummary();
     }
-
-    // 在全场结算模式下，按键目前设计为无反应（只能看）
-    // 直到用户使用 "智能复位" (红+绿) 重新开始比赛
-    // 只是为了防止死锁，更新按键状态
     lastStateBad = rBad;
   }
 
-  // [New] UI Refresh Handler
   if (uiRefreshRequested) {
     uiRefreshRequested = false;
     if (currentState == STATE_PLAYING) {
@@ -1443,10 +1418,8 @@ void loop() {
     }
   }
 
-  // [NEW] Robust Advertising Logic (Event-Driven)
   if (advertisingRestartRequested) {
     advertisingRestartRequested = false;
-    // Only restart if we have room for more connections (Max 3)
     if (deviceConnectedCount < 3) {
       Serial.println("Restarting Advertising for Multi-Connect...");
       delay(10);
@@ -1454,33 +1427,28 @@ void loop() {
     }
   }
 
-  // [NEW] Camera Sequence Logic (Non-blocking)
   if (isAutoRecordEnabled && camSequenceStartTime > 0) {
     long elapsed = millis() - camSequenceStartTime;
-
-    // Phase 1: Camera Trigger (3s)
     if (elapsed >= CAM_PRE_DELAY && !hasSentStart) {
-      sendHIDKey(0x28); // Send Enter (Return)
+      sendHIDKey(0x28);
       hasSentStart = true;
       playSound(1);
     }
-
-    // Phase 2: Camera Trigger (12s)
     if (elapsed >= (CAM_PRE_DELAY + CAM_REC_DURATION) && !hasSentStop) {
-      sendHIDKey(0x28); // Send Enter (Return)
+      sendHIDKey(0x28);
       hasSentStop = true;
-      camSequenceStartTime = 0; // Reset
-      playSound(2);             // Stop Beep
-      drawPlayingUI();          // Restore to full bar
+      camSequenceStartTime = 0;
+      playSound(2);
+      drawPlayingUI();
     }
-
-    // Update LED countdown only when the second changes
     static int lastDisplayedSeconds = -1;
     int currentSeconds = elapsed / 1000;
-
     if (currentSeconds != lastDisplayedSeconds) {
       lastDisplayedSeconds = currentSeconds;
       drawPlayingUI();
     }
   }
+
+  // [NEW] Update Audio Engine
+  audio.update();
 }
