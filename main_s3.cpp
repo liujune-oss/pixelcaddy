@@ -110,6 +110,11 @@ volatile bool uiRefreshRequested =
 volatile bool advertisingRestartRequested =
     false; // [New] Safer Advertising Restart
 
+// ================= 电池电量监测 (变量提前声明) =================
+unsigned long lastBatteryUpdate = 0;
+const unsigned long BATTERY_UPDATE_INTERVAL = 30000; // 30秒更新一次
+int lastBatteryPercent = -1;
+
 // ================= Audio Object =================
 AudioPlayer audio(PIN_BUZZER);
 
@@ -449,10 +454,7 @@ void clearData() {
   prefs.end();
 }
 
-// ================= 电池电量监测 =================
-unsigned long lastBatteryUpdate = 0;
-const unsigned long BATTERY_UPDATE_INTERVAL = 30000; // 30秒更新一次
-int lastBatteryPercent = -1;
+// ================= 电池电量监测 (函数) =================
 
 // 读取电池电压 (单位: mV)
 int readBatteryVoltage() {
@@ -1055,6 +1057,11 @@ void setup() {
       CHAR_BATTERY_UUID,
       BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pBatteryCharacteristic->addDescriptor(new BLE2902());
+
+  // [诊断] 设置特殊初始值 999，如果网页显示 999 说明 BLE 通讯正常但 ADC 未更新
+  String initVal = "999";
+  pBatteryCharacteristic->setValue((uint8_t *)initVal.c_str(),
+                                   initVal.length());
 
   pService->start();
 

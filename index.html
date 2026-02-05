@@ -137,6 +137,9 @@
         <div id="batteryStatus" style="margin-bottom: 15px;">
             <span style="font-size: 1.5rem;">🔋</span>
             <span id="batteryPercent" style="font-size: 1rem; color: #888;">未读取</span>
+            <button id="readBatteryBtn" onclick="manualReadBattery()"
+                style="font-size: 0.8rem; padding: 4px 10px; margin-left: 10px; display: none;">🔄 手动读取</button>
+            <div id="batteryDebug" style="font-size: 0.75rem; color: #666; margin-top: 5px;"></div>
         </div>
         <button id="connectBtn">📡 Connect & Sync</button>
         <div class="status" id="status">Ready to connect...</div>
@@ -355,10 +358,14 @@
                     batteryChar.addEventListener('characteristicvaluechanged', handleBatteryNotification);
                     // 读取初始值
                     const batteryValue = await batteryChar.readValue();
-                    updateBatteryDisplay(new TextDecoder().decode(batteryValue));
+                    const rawStr = new TextDecoder().decode(batteryValue);
+                    updateBatteryDisplay(rawStr);
+                    document.getElementById('batteryDebug').textContent = '初始读取: "' + rawStr + '"';
+                    document.getElementById('readBatteryBtn').style.display = 'inline-block';
                 } catch (e) {
                     console.warn("Battery characteristic not available:", e);
-                    updateBatteryDisplay(null); // 保持"未读取"状态
+                    updateBatteryDisplay(null);
+                    document.getElementById('batteryDebug').textContent = '错误: ' + e.message;
                 }
 
                 document.getElementById('connectBtn').style.display = 'none';
@@ -397,6 +404,14 @@
                 el.style.fontSize = '1rem';
                 return;
             }
+            // [诊断] 显示 999 表示 BLE 通讯正常但 ADC 未更新
+            if (pct === 999) {
+                el.textContent = '999 (诊断值)';
+                el.style.color = '#ff00ff'; // 紫色
+                el.style.fontWeight = 'bold';
+                el.style.fontSize = '1.2rem';
+                return;
+            }
             el.textContent = pct + '%';
             el.style.fontWeight = 'bold';
             el.style.fontSize = '1.2rem';
@@ -410,6 +425,24 @@
             }
         }
 
+        // [诊断] 手动读取电池值
+        async function manualReadBattery() {
+            const debugEl = document.getElementById('batteryDebug');
+            if (!batteryChar) {
+                debugEl.textContent = '错误: 电池特征未初始化';
+                return;
+            }
+            try {
+                debugEl.textContent = '读取中...';
+                const value = await batteryChar.readValue();
+                const rawStr = new TextDecoder().decode(value);
+                updateBatteryDisplay(rawStr);
+                const now = new Date().toLocaleTimeString();
+                debugEl.textContent = `[${now}] 读取成功: "${rawStr}"`;
+            } catch (e) {
+                debugEl.textContent = '读取失败: ' + e.message;
+            }
+        }
         async function syncTime() {
             if (!timeChar) return;
             const now = Math.floor(Date.now() / 1000).toString();
