@@ -180,8 +180,21 @@ class MyServerCallbacks : public BLEServerCallbacks {
     if (pDesc) {
       uint8_t on[] = {0x01, 0x00};
       pDesc->setValue(on, 2);
-      Serial.println("Forced Notifications ON");
+      Serial.println("Forced History Notifications ON");
     }
+
+    // [新增] 为电池特征也强制启用通知
+    BLEDescriptor *pBattDesc =
+        pBatteryCharacteristic->getDescriptorByUUID(BLEUUID((uint16_t)0x2902));
+    if (pBattDesc) {
+      uint8_t on[] = {0x01, 0x00};
+      pBattDesc->setValue(on, 2);
+      Serial.println("Forced Battery Notifications ON");
+    }
+
+    // [新增] 强制立即更新电池 (重置缓存以确保首次发送)
+    lastBatteryPercent = -1;
+    lastBatteryUpdate = 0; // 触发立即更新
 
     Serial.print("Device Connected. Count: ");
     Serial.println(deviceConnectedCount);

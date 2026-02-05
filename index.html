@@ -133,10 +133,10 @@
 
 <body>
     <div class="container">
-        <h1>Pixel Caddy Sync v1.1</h1>
-        <div id="batteryStatus" style="margin-bottom: 15px; display: none;">
+        <h1>Pixel Caddy Sync v1.2</h1>
+        <div id="batteryStatus" style="margin-bottom: 15px;">
             <span style="font-size: 1.5rem;">🔋</span>
-            <span id="batteryPercent" style="font-size: 1.2rem; font-weight: bold; color: #00ff88;">--%</span>
+            <span id="batteryPercent" style="font-size: 1rem; color: #888;">未读取</span>
         </div>
         <button id="connectBtn">📡 Connect & Sync</button>
         <div class="status" id="status">Ready to connect...</div>
@@ -349,7 +349,6 @@
 
                 timeChar = await service.getCharacteristic(CHAR_TIME_UUID);
 
-                // [新增] 订阅电池电量
                 try {
                     batteryChar = await service.getCharacteristic(CHAR_BATTERY_UUID);
                     await batteryChar.startNotifications();
@@ -357,9 +356,9 @@
                     // 读取初始值
                     const batteryValue = await batteryChar.readValue();
                     updateBatteryDisplay(new TextDecoder().decode(batteryValue));
-                    document.getElementById('batteryStatus').style.display = 'block';
                 } catch (e) {
                     console.warn("Battery characteristic not available:", e);
+                    updateBatteryDisplay(null); // 保持"未读取"状态
                 }
 
                 document.getElementById('connectBtn').style.display = 'none';
@@ -390,8 +389,17 @@
 
         function updateBatteryDisplay(percent) {
             const el = document.getElementById('batteryPercent');
-            const pct = parseInt(percent) || 0;
+            const pct = parseInt(percent);
+            if (isNaN(pct)) {
+                el.textContent = '未读取';
+                el.style.color = '#888';
+                el.style.fontWeight = 'normal';
+                el.style.fontSize = '1rem';
+                return;
+            }
             el.textContent = pct + '%';
+            el.style.fontWeight = 'bold';
+            el.style.fontSize = '1.2rem';
             // 根据电量变色
             if (pct <= 20) {
                 el.style.color = '#ff4444'; // 红色
