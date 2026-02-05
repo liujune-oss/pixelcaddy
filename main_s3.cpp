@@ -1036,7 +1036,8 @@ void setup() {
   BLEDevice::init("Pixel Caddy");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+  // [修复] 增加句柄数量以支持3个特征 (默认15不够，需要至少30)
+  BLEService *pService = pServer->createService(BLEUUID(SERVICE_UUID), 30);
 
   pHistoryCharacteristic = pService->createCharacteristic(
       CHAR_HISTORY_UUID, BLECharacteristic::PROPERTY_READ |
