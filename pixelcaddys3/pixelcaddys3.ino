@@ -1294,8 +1294,9 @@ void setup() {
       BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
   pConfigCharacteristic->setCallbacks(new ConfigCallbacks());
 
-  // [诊断] 设置特殊初始值 999，如果网页显示 999 说明 BLE 通讯正常但 ADC 未更新
-  String initVal = "999";
+  // [诊断] 立即读取一次电池电量，不再显示 999
+  int bootBattery = getBatteryPercent();
+  String initVal = String(bootBattery);
   pBatteryCharacteristic->setValue((uint8_t *)initVal.c_str(),
                                    initVal.length());
 

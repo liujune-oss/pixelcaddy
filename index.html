@@ -1512,6 +1512,14 @@
                 await requestPage(0);
 
                 setTimeout(() => showStatus("连接成功 ✓"), 500);
+
+                // [Fix] Ensure Settings tab shows "Connected" immediately
+                const devBleEl = document.getElementById('devBLE');
+                if (devBleEl) {
+                    devBleEl.textContent = "已连接";
+                    devBleEl.style.color = "#C4F82A"; // Lime
+                }
+
                 lucide.createIcons();
 
             } catch (error) {
