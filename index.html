@@ -1347,7 +1347,7 @@
     <script>
         // =================== DASHBOARD VERSION ===================
         // 每次修改 dashboard 时，在这里更新版本号
-        const DASHBOARD_VERSION = 'v2.7.5';
+        const DASHBOARD_VERSION = 'v2.8.0';
 
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -1603,6 +1603,12 @@
                         // Verify it's a volume key or enter (device sends VolumeUp)
                         // But catching ANY key is good enough proof of HID connection
                         console.log("Key detected:", e.code, e.key);
+
+                        // [Fix] Prevent Enter/Space from triggering buttons again if focus is stuck
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                        }
+
                         const hidEl = document.getElementById('hidStatusText');
                         if (hidEl && hidEl.textContent.includes('请按')) {
                             hidEl.textContent = '已配对 (检测到按键)';
@@ -1968,6 +1974,7 @@
         async function toggleCameraMode() {
             cameraMode = !cameraMode;
             const btn = document.getElementById('remoteModeBtn');
+            btn.blur(); // [Fix] Remove focus to prevent Enter key from triggering it again
             const btnText = document.getElementById('remoteBtnText');
             const label = document.getElementById('remoteModeLabel');
             const hint = document.getElementById('remoteModeHint');
