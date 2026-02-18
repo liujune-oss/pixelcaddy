@@ -161,10 +161,18 @@
             box-shadow: 0 0 40px var(--accent-lime-glow);
         }
 
-        .ble-rings .ble-icon-circle i {
+        .ble-rings .ble-icon-circle i,
+        .ble-rings .ble-icon-circle svg {
             width: 26px;
             height: 26px;
             color: var(--bg-pitch);
+            stroke: var(--bg-pitch);
+        }
+
+        .ble-status-btn svg {
+            color: var(--accent-lime);
+            stroke: var(--accent-lime);
+            filter: drop-shadow(0 0 6px var(--accent-lime-glow));
         }
 
         @keyframes pulse-ring {
@@ -829,14 +837,23 @@
                         <div class="metric-card good">
                             <div class="metric-val" id="metricGood">-</div>
                             <div class="metric-label">Good</div>
+                            <div class="metric-trend"><i data-lucide="trending-up"
+                                    style="width:14px;height:14px;display:inline;vertical-align:middle;"></i> <span
+                                    id="trendGood">--</span></div>
                         </div>
                         <div class="metric-card neutral">
                             <div class="metric-val" id="metricNormal">-</div>
                             <div class="metric-label">Normal</div>
+                            <div class="metric-trend yellow"><i data-lucide="minus"
+                                    style="width:14px;height:14px;display:inline;vertical-align:middle;"></i> <span
+                                    id="trendNormal">--</span></div>
                         </div>
                         <div class="metric-card neutral">
                             <div class="metric-val" id="metricBad">-</div>
                             <div class="metric-label">Bad</div>
+                            <div class="metric-trend" style="color:var(--color-bad);"><i data-lucide="trending-down"
+                                    style="width:14px;height:14px;display:inline;vertical-align:middle;"></i> <span
+                                    id="trendBad">--</span></div>
                         </div>
                     </div>
                 </div>
@@ -1245,6 +1262,18 @@
             document.getElementById('metricNormal').textContent = latest.n;
             document.getElementById('metricBad').textContent = latest.b;
 
+            // Update Trends (compare with previous group)
+            if (params.length >= 2) {
+                const prev = params[1];
+                updateTrend('trendGood', latest.g, prev.g);
+                updateTrend('trendNormal', latest.n, prev.n);
+                updateTrend('trendBad', latest.b, prev.b);
+            } else {
+                document.getElementById('trendGood').textContent = '--';
+                document.getElementById('trendNormal').textContent = '--';
+                document.getElementById('trendBad').textContent = '--';
+            }
+
             // Update Progress
             const totalGroups = params.length;
             document.getElementById('progressLabel').textContent = `${totalGroups} 组已完成`;
@@ -1310,6 +1339,21 @@
                 device.gatt.disconnect();
             }
             onDisconnected();
+        }
+
+        // =================== TREND HELPER ===================
+        function updateTrend(spanId, current, previous) {
+            const el = document.getElementById(spanId);
+            if (previous === 0 && current === 0) {
+                el.textContent = '0%';
+                return;
+            }
+            if (previous === 0) {
+                el.textContent = '+100%';
+                return;
+            }
+            const pct = Math.round(((current - previous) / previous) * 100);
+            el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
         }
 
         // =================== HELPERS ===================
