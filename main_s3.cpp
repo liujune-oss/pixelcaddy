@@ -999,6 +999,19 @@ void triggerShot(int type) {
     playSound(3);
   }
   saveData();
+
+  // [新增] 实时推送当前组数据
+  if (deviceConnectedCount > 0) {
+    String livePayload = "{\"live\":true,\"i\":" + String(currentGroupIdx + 1) +
+                         ",\"g\":" + String(groupGoodCount) +
+                         ",\"n\":" + String(groupNormalCount) +
+                         ",\"b\":" + String(groupBadCount) +
+                         ",\"s\":" + String(groupShots) + "}";
+    pHistoryCharacteristic->setValue((uint8_t *)livePayload.c_str(),
+                                     livePayload.length());
+    pHistoryCharacteristic->notify();
+  }
+
   checkGroupCompletion();
   if (currentState == STATE_PLAYING) {
     drawPlayingUI();
@@ -1024,6 +1037,18 @@ void triggerUndo() {
   }
   groupHistory[groupShots] = 0;
   saveData();
+
+  // [新增] 撤销后实时推送
+  if (deviceConnectedCount > 0) {
+    String livePayload = "{\"live\":true,\"i\":" + String(currentGroupIdx + 1) +
+                         ",\"g\":" + String(groupGoodCount) +
+                         ",\"n\":" + String(groupNormalCount) +
+                         ",\"b\":" + String(groupBadCount) +
+                         ",\"s\":" + String(groupShots) + "}";
+    pHistoryCharacteristic->setValue((uint8_t *)livePayload.c_str(),
+                                     livePayload.length());
+    pHistoryCharacteristic->notify();
+  }
 
   xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
   matrix.drawRect(0, 0, 16, 16, C_BLUE);

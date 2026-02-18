@@ -753,6 +753,226 @@
         .status-toast.visible {
             opacity: 1;
         }
+
+        /* =================== DETAIL RECORDS SCREEN =================== */
+        #detailScreen {
+            display: none;
+            flex-direction: column;
+            min-height: 100vh;
+            padding-bottom: 100px;
+        }
+
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 24px 8px;
+        }
+
+        .detail-header h1 {
+            font-family: var(--font-headline);
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .detail-header .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .summary-bar {
+            display: flex;
+            gap: 8px;
+            padding: 12px 24px;
+            flex-wrap: wrap;
+        }
+
+        .summary-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: var(--radius-pill);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .summary-pill.total {
+            background: var(--border-zinc);
+            color: var(--text-secondary);
+        }
+
+        .summary-pill.good {
+            background: rgba(196, 248, 42, 0.15);
+            color: var(--color-good);
+        }
+
+        .summary-pill.bad {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--color-bad);
+        }
+
+        .summary-pill .pill-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .record-list {
+            padding: 8px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .record-card {
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .record-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .record-top .rec-idx {
+            font-family: var(--font-headline);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .record-top .rec-time {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .record-stats {
+            display: flex;
+            gap: 8px;
+        }
+
+        .stat-cell {
+            flex: 1;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-cell.good {
+            background: rgba(196, 248, 42, 0.1);
+        }
+
+        .stat-cell.normal {
+            background: rgba(234, 179, 8, 0.1);
+        }
+
+        .stat-cell.bad {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .stat-cell .stat-val {
+            font-family: var(--font-headline);
+            font-size: 22px;
+            font-weight: 800;
+        }
+
+        .stat-cell.good .stat-val {
+            color: var(--color-good);
+        }
+
+        .stat-cell.normal .stat-val {
+            color: var(--color-normal);
+        }
+
+        .stat-cell.bad .stat-val {
+            color: var(--color-bad);
+        }
+
+        .stat-cell .stat-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .stat-cell.good .stat-label {
+            color: var(--color-good);
+        }
+
+        .stat-cell.normal .stat-label {
+            color: var(--color-normal);
+        }
+
+        .stat-cell.bad .stat-label {
+            color: var(--color-bad);
+        }
+
+        .record-score {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .record-score .score-label {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .record-score .score-bar-bg {
+            flex: 1;
+            height: 6px;
+            background: var(--border-zinc);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .record-score .score-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .record-score .score-val {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            min-width: 32px;
+            text-align: right;
+        }
+
+        .detail-actions {
+            padding: 12px 24px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .detail-actions button {
+            flex: 1;
+            padding: 12px;
+            background: var(--border-zinc);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .detail-actions button:hover {
+            background: var(--border-hover);
+            color: var(--text-primary);
+        }
     </style>
 </head>
 
@@ -862,6 +1082,9 @@
                 <div>
                     <div class="section-head" style="margin-bottom:16px;">
                         <h2>当前进度</h2>
+                        <span class="link" id="currentGroupLabel" style="display:flex;align-items:center;gap:6px;"><span
+                                style="width:8px;height:8px;border-radius:50%;background:var(--color-good);display:inline-block;"></span>
+                            <span id="groupShotText">-- · --</span></span>
                     </div>
                     <div class="progress-card">
                         <div class="progress-header">
@@ -931,16 +1154,46 @@
             </div>
         </div>
 
+        <!-- =================== DETAIL RECORDS SCREEN =================== -->
+        <div id="detailScreen">
+            <div class="detail-header">
+                <div>
+                    <h1>训练明细</h1>
+                    <div class="subtitle">每组训练的详细记录</div>
+                </div>
+                <button class="ble-status-btn" title="搜索">
+                    <i data-lucide="search"></i>
+                </button>
+            </div>
+
+            <div class="summary-bar">
+                <span class="summary-pill total" id="pillTotal">共 0 组</span>
+                <span class="summary-pill good"><span class="pill-dot" style="background:var(--color-good)"></span>
+                    <span id="pillGood">Good 0</span></span>
+                <span class="summary-pill bad"><span class="pill-dot" style="background:var(--color-bad)"></span> <span
+                        id="pillBad">Bad 0</span></span>
+            </div>
+
+            <div class="detail-actions">
+                <button onclick="refreshData()">🔄 刷新数据</button>
+                <button onclick="loadOlder()">⬇ 加载更多</button>
+            </div>
+
+            <div class="record-list" id="recordList">
+                <!-- Records rendered dynamically -->
+            </div>
+        </div>
+
         <!-- Tab Fade & Tab Bar -->
         <div class="tab-fade" id="tabFade"></div>
         <div class="tab-bar" id="tabBar">
-            <button class="tab-item active">
+            <button class="tab-item active" onclick="switchTab('dashboard', this)">
                 <i data-lucide="layout-dashboard"></i>
                 <span>仪表盘</span>
             </button>
-            <button class="tab-item" onclick="refreshData()">
-                <i data-lucide="bar-chart-2"></i>
-                <span>统计</span>
+            <button class="tab-item" onclick="switchTab('detail', this)">
+                <i data-lucide="list"></i>
+                <span>明细</span>
             </button>
             <button class="tab-item">
                 <i data-lucide="camera"></i>
@@ -948,7 +1201,7 @@
             </button>
             <button class="tab-item" onclick="disconnect()">
                 <i data-lucide="settings"></i>
-                <span>断开</span>
+                <span>设置</span>
             </button>
         </div>
     </div>
@@ -1177,6 +1430,16 @@
             const jsonStr = decoder.decode(event.target.value);
             try {
                 const record = JSON.parse(jsonStr);
+
+                // [新增] 实时每球更新
+                if (record.live) {
+                    document.getElementById('groupShotText').textContent = `第 ${record.i} 组 · ${record.s}/10 球`;
+                    document.getElementById('metricGood').textContent = record.g;
+                    document.getElementById('metricNormal').textContent = record.n;
+                    document.getElementById('metricBad').textContent = record.b;
+                    return;
+                }
+
                 if (record && record.i) {
                     historyData[record.i] = record;
                     updateUI();
@@ -1280,6 +1543,10 @@
             const progressPct = Math.min((totalGroups / 10) * 100, 100);
             document.getElementById('progressBar').style.width = progressPct + '%';
 
+            // Update Group/Shot indicator
+            const totalShots = latest.g + latest.n + latest.b;
+            document.getElementById('groupShotText').textContent = `第 ${latest.i} 组 · ${totalShots}/10 球`;
+
             // Update Storage
             document.getElementById('devStorage').textContent = `${totalGroups}/100 组`;
 
@@ -1354,6 +1621,87 @@
             }
             const pct = Math.round(((current - previous) / previous) * 100);
             el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+        }
+
+        // =================== TAB SWITCHING ===================
+        function switchTab(tabName, btnEl) {
+            // Update active tab
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            if (btnEl) btnEl.classList.add('active');
+
+            // Switch screens
+            document.getElementById('dashboardScreen').style.display = (tabName === 'dashboard') ? 'flex' : 'none';
+            document.getElementById('detailScreen').style.display = (tabName === 'detail') ? 'flex' : 'none';
+
+            if (tabName === 'detail') {
+                renderRecords();
+            }
+        }
+
+        // =================== RENDER RECORDS ===================
+        function renderRecords() {
+            const container = document.getElementById('recordList');
+            let params = Object.values(historyData);
+            params.sort((a, b) => b.i - a.i);
+
+            // Update summary pills
+            const totalGroups = params.length;
+            const totalGood = params.reduce((s, r) => s + r.g, 0);
+            const totalBad = params.reduce((s, r) => s + r.b, 0);
+            document.getElementById('pillTotal').textContent = `共 ${totalGroups} 组`;
+            document.getElementById('pillGood').textContent = `Good ${totalGood}`;
+            document.getElementById('pillBad').textContent = `Bad ${totalBad}`;
+
+            // Generate record cards
+            container.innerHTML = params.map(rec => {
+                const total = rec.g + rec.n + rec.b;
+                const score = total > 0 ? Math.round((rec.g * 100 + rec.n * 50) / total) : 0;
+                const barColor = score >= 70
+                    ? 'linear-gradient(90deg, #C4F82A, #87D918)'
+                    : 'linear-gradient(90deg, #EAB308, #CA8A04)';
+                const scoreColor = score >= 70 ? '#C4F82A' : '#EAB308';
+
+                // Format timestamp
+                let timeStr = '--';
+                if (rec.t && rec.t > 1000000000) {
+                    const d = new Date(rec.t * 1000);
+                    timeStr = d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0') + ' ' +
+                        String(d.getHours()).padStart(2, '0') + ':' +
+                        String(d.getMinutes()).padStart(2, '0');
+                }
+
+                return `
+                    <div class="record-card">
+                        <div class="record-top">
+                            <span class="rec-idx">#${rec.i}</span>
+                            <span class="rec-time">${timeStr}</span>
+                        </div>
+                        <div class="record-stats">
+                            <div class="stat-cell good">
+                                <span class="stat-val">${rec.g}</span>
+                                <span class="stat-label">Good</span>
+                            </div>
+                            <div class="stat-cell normal">
+                                <span class="stat-val">${rec.n}</span>
+                                <span class="stat-label">Normal</span>
+                            </div>
+                            <div class="stat-cell bad">
+                                <span class="stat-val">${rec.b}</span>
+                                <span class="stat-label">Bad</span>
+                            </div>
+                        </div>
+                        <div class="record-score">
+                            <span class="score-label">得分</span>
+                            <div class="score-bar-bg">
+                                <div class="score-bar-fill" style="width:${score}%;background:${barColor}"></div>
+                            </div>
+                            <span class="score-val" style="color:${scoreColor}">${score}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // =================== HELPERS ===================
