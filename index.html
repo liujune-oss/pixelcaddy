@@ -1167,6 +1167,10 @@
             <div style="padding:0 20px;">
                 <div class="section-head" style="margin-bottom:16px;">
                     <h2>设备状态</h2>
+                    <button onclick="refreshDeviceStatus()"
+                        style="background:none;border:none;color:var(--accent-lime);cursor:pointer;" title="刷新状态">
+                        <i data-lucide="refresh-cw" style="width:18px;height:18px;"></i>
+                    </button>
                 </div>
                 <div class="device-card">
                     <div class="device-row">
@@ -1252,6 +1256,7 @@
         const CHAR_HISTORY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26ac";
         const CHAR_TIME_UUID = "87a7d400-5343-4565-a9b7-1601b0034876";
         const CHAR_BATTERY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a1";
+        const CHAR_VERSION_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a2"; // [New]
 
         // =================== STATE ===================
         let device, server, service, historyChar, timeChar, batteryChar;
@@ -1434,9 +1439,9 @@
                     console.warn("Battery characteristic not available:", e);
                 }
 
-                // Firmware Version (Main Service)
+                // Firmware Version (Custom Characteristic)
                 try {
-                    const firmwareChar = await service.getCharacteristic(0x2A26);
+                    const firmwareChar = await service.getCharacteristic(CHAR_VERSION_UUID);
                     const firmwareVal = await firmwareChar.readValue();
                     const firmwareStr = new TextDecoder().decode(firmwareVal);
                     document.getElementById('firmwareVersion').textContent = firmwareStr;
@@ -1578,6 +1583,30 @@
 
         async function loadOlder() {
             await requestPage(currentPage + 1);
+        }
+
+        async function refreshDeviceStatus() {
+            showStatus("正在刷新设备状态...");
+            try {
+                // Refresh Battery
+                if (batteryChar) {
+                    const batteryValue = await batteryChar.readValue();
+                    const rawStr = new TextDecoder().decode(batteryValue);
+                    updateBatteryDisplay(rawStr);
+                }
+
+                // Refresh Firmware
+                if (service) {
+                    const firmwareChar = await service.getCharacteristic(CHAR_VERSION_UUID);
+                    const firmwareVal = await firmwareChar.readValue();
+                    const firmwareStr = new TextDecoder().decode(firmwareVal);
+                    document.getElementById('firmwareVersion').textContent = firmwareStr;
+                }
+                setTimeout(() => showStatus("刷新成功 ✓"), 500);
+            } catch (e) {
+                console.error("Refresh failed:", e);
+                showStatus("刷新失败");
+            }
         }
 
         // =================== UPDATE UI ===================

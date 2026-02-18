@@ -95,11 +95,15 @@ volatile bool displayNeedsUpdate = false;
   "beb5483e-36e1-4688-b7f5-ea07361b26ac" // Changed to 'ac' to bust cache again
 #define CHAR_TIME_UUID "87a7d400-5343-4565-a9b7-1601b0034876"
 #define CHAR_BATTERY_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a1" // 电池电量
+#define CHAR_VERSION_UUID                                                      \
+  "beb5483e-36e1-4688-b7f5-ea07361b26a2" // [New] Firmware Version
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pHistoryCharacteristic = NULL;
 BLECharacteristic *pTimeCharacteristic = NULL;
 BLECharacteristic *pBatteryCharacteristic = NULL; // [新增] 电池特征值
+BLECharacteristic *pVersionCharacteristic =
+    NULL;                     // [New] Firmware Version Characteristic
 int deviceConnectedCount = 0; // [Fix] Counter instead of bool
 bool isBleEnabled = true;
 bool oldDeviceConnected = false;
@@ -1235,10 +1239,10 @@ void setup() {
       BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pBatteryCharacteristic->addDescriptor(new BLE2902());
 
-  // [新增] 固件版本 (放主服务，避免HID冲突)
-  BLECharacteristic *pFirmware = pService->createCharacteristic(
-      (uint16_t)0x2A26, BLECharacteristic::PROPERTY_READ);
-  pFirmware->setValue("v2.2.0");
+  // [New] Firmware Version Characteristic (Read Only)
+  pVersionCharacteristic = pService->createCharacteristic(
+      CHAR_VERSION_UUID, BLECharacteristic::PROPERTY_READ);
+  pVersionCharacteristic->setValue("v2.2.0");
 
   // [诊断] 设置特殊初始值 999，如果网页显示 999 说明 BLE 通讯正常但 ADC 未更新
   String initVal = "999";
