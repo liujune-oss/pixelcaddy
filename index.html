@@ -1449,6 +1449,7 @@
                 device.addEventListener('gattserverdisconnected', onDisconnected);
                 showStatus("正在连接...");
                 server = await device.gatt.connect();
+                device.addEventListener('gattserverdisconnected', onDisconnected); // [Fix] Handle unexpected disconnects
                 service = await server.getPrimaryService(SERVICE_UUID);
 
                 // [DEBUG] Log all characteristics
