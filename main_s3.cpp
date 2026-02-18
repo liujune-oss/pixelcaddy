@@ -342,7 +342,12 @@ void updateHistoryBLE() {
 }
 
 // 状态机定义
-enum GameState { STATE_PLAYING, STATE_SUMMARY_GROUP, STATE_SUMMARY_FINAL };
+enum GameState {
+  STATE_PLAYING,
+  STATE_SUMMARY_GROUP,
+  STATE_SUMMARY_FINAL,
+  STATE_SETTINGS
+};
 GameState currentState = STATE_PLAYING;
 
 // 结算显示控制
@@ -367,8 +372,16 @@ int groupResults[10];
 
 // 设置
 int currentBrightness = 20;
-const int BRT_STEP = 10;
-const int BRT_MAX = 100; // 最大亮度限制
+int currentVolume = 30; // [新增] 音量设置 (0-100)
+const int SETTING_STEP = 10;
+const int BRT_MAX = 100;
+const int BRT_MIN = 10;
+const int VOL_MAX = 100;
+const int VOL_MIN = 0;
+
+// [新增] 设置菜单状态
+int settingsMode = 0; // 0=亮度, 1=音量
+const int SETTINGS_MODE_COUNT = 2;
 
 // 长按与防抖
 unsigned long lastActivityTime = 0;
@@ -398,12 +411,17 @@ void loadData() {
   totalNormal = prefs.getInt("normal", 0);
   totalBad = prefs.getInt("bad", 0);
   currentBrightness = prefs.getInt("brt", 20);
+  currentVolume = prefs.getInt("vol", 30); // [新增] 读取音量
   currentGroupIdx = prefs.getInt("groupIdx", 0);
   groupShots = prefs.getInt("groupShots", 0);
   groupGoodCount = prefs.getInt("groupGood", 0);
   groupNormalCount = prefs.getInt("groupNormal", 0);
   groupBadCount = prefs.getInt("groupBad", 0);
   currentState = (GameState)prefs.getInt("state", STATE_PLAYING);
+  // [修复] 防止开机进入设置状态
+  if (currentState == STATE_SETTINGS) {
+    currentState = STATE_PLAYING;
+  }
 
   // Load UI arrays
   prefs.getBytes("ui_hist", groupHistory, sizeof(groupHistory));
@@ -415,6 +433,9 @@ void loadData() {
   prefs.getBytes("all_hist", allGroupsHistory, sizeof(allGroupsHistory));
 
   prefs.end();
+
+  // [新增] 应用加载的音量设置
+  audio.setVolume(currentVolume);
 }
 
 void saveData() {
@@ -423,6 +444,8 @@ void saveData() {
   prefs.putInt("good", totalGood);
   prefs.putInt("normal", totalNormal);
   prefs.putInt("bad", totalBad);
+  prefs.putInt("brt", currentBrightness); // [新增] 保存亮度
+  prefs.putInt("vol", currentVolume);     // [新增] 保存音量
   prefs.putInt("groupIdx", currentGroupIdx);
   prefs.putInt("groupShots", groupShots);
   prefs.putInt("groupGood", groupGoodCount);
@@ -456,25 +479,68 @@ void clearData() {
 
 // ================= 电池电量监测 (函数) =================
 
-// 读取电池电压 (单位: mV)
+// 读取电池电压 (单位: mV) - 带滤波
 int readBatteryVoltage() {
   // ESP32-S3 ADC: 12-bit (0-4095), 参考电压约 3.3V
   // 电压分压 1:1，实际电压 = ADC电压 × 2
-  int adcValue = analogRead(PIN_BATTERY);
+
+  // [滤波] 采样 8 次取平均值
+  long sum = 0;
+  const int samples = 8;
+  for (int i = 0; i < samples; i++) {
+    sum += analogRead(PIN_BATTERY);
+    delayMicroseconds(500); // 0.5ms 间隔
+  }
+  int adcValue = sum / samples;
+
   // ADC电压 = adcValue / 4095 * 3300 mV
   // 电池电压 = ADC电压 * 2 (因为 1:1 分压)
   int batteryMV = (adcValue * 3300 * 2) / 4095;
   return batteryMV;
 }
 
-// 转换电压为百分比 (3200mV=0%, 4200mV=100%)
+// 转换电压为百分比 - 5 位滑动窗口滤波
+// [校准] 实际满电约 4040mV，空电约 3300mV
+int mvHistory[5] = {0, 0, 0, 0, 0}; // 5 位 FIFO 队列
+int mvHistoryIndex = 0;
+bool mvHistoryFilled = false;
+
 int getBatteryPercent() {
   int mv = readBatteryVoltage();
-  if (mv >= 4200)
-    return 100;
-  if (mv <= 3200)
-    return 0;
-  return (mv - 3200) * 100 / 1000;
+
+  // [FIFO] 先入先出存储电压值
+  mvHistory[mvHistoryIndex] = mv;
+  mvHistoryIndex = (mvHistoryIndex + 1) % 5;
+  if (mvHistoryIndex == 0)
+    mvHistoryFilled = true;
+
+  // 计算平均值
+  int count = mvHistoryFilled ? 5 : mvHistoryIndex;
+  if (count == 0)
+    count = 1; // 防止除零
+  long sum = 0;
+  for (int i = 0; i < count; i++) {
+    sum += mvHistory[i];
+  }
+  int avgMv = sum / count;
+
+  // [调试] 输出原始电压值
+  static unsigned long lastDebugTime = 0;
+  if (millis() - lastDebugTime > 10000) { // 每10秒输出一次
+    lastDebugTime = millis();
+    Serial.printf("[BATT DEBUG] Raw mV: %d, Avg mV: %d\n", mv, avgMv);
+  }
+
+  // [校准] 调整满电阈值为 4040mV (实测满电 4043mV)
+  int percent;
+  if (avgMv >= 4040)
+    percent = 100;
+  else if (avgMv <= 3300)
+    percent = 0;
+  else
+    percent = (avgMv - 3300) * 100 / 740; // 740 = 4040 - 3300
+
+  return percent;
 }
 
 // 更新电池 BLE 特征值
@@ -685,8 +751,22 @@ void drawPlayingUI() {
       }
     }
   } else {
-    for (int i = 0; i < 16; i++)
+    // [新增] 电量显示条：中间10个LED (列3-12)，每个代表10%
+    int batteryPct = getBatteryPercent();
+    int litLeds = batteryPct / 10; // 0-10 个灯亮
+    for (int i = 0; i < 10; i++) {
+      int x = 3 + i; // 列 3-12
+      if (i < litLeds) {
+        matrix.drawPixel(x, 15, C_GREEN); // 有电 = 绿色
+      } else {
+        matrix.drawPixel(x, 15, C_RED); // 没电 = 红色
+      }
+    }
+    // 两侧留空 (列 0-2 和 13-15)
+    for (int i = 0; i < 3; i++) {
       matrix.drawPixel(i, 15, 0);
+      matrix.drawPixel(13 + i, 15, 0);
+    }
   }
 
   if (isBleEnabled) {
@@ -772,6 +852,66 @@ void drawFinalSummary() {
   }
 
   enforcePowerLimit(); // [新增] 强制检查功耗
+  requestDisplayUpdate();
+  xSemaphoreGiveRecursive(displayMutex); // [Unlock]
+}
+
+// 7.4 设置菜单界面
+void drawSettingsUI() {
+  xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY); // [Lock]
+  matrix.fillScreen(0);
+
+  int currentValue = 0;
+  uint16_t iconColor = C_YELLOW;
+
+  if (settingsMode == 0) {
+    // 亮度模式：显示太阳图标
+    currentValue = currentBrightness;
+    iconColor = C_YELLOW;
+    // 太阳图标 (6x6, 从 (5,1) 开始)
+    matrix.drawPixel(7, 1, iconColor);  // 顶
+    matrix.drawPixel(7, 7, iconColor);  // 底
+    matrix.drawPixel(4, 4, iconColor);  // 左
+    matrix.drawPixel(10, 4, iconColor); // 右
+    matrix.drawPixel(5, 2, iconColor);  // 左上
+    matrix.drawPixel(9, 2, iconColor);  // 右上
+    matrix.drawPixel(5, 6, iconColor);  // 左下
+    matrix.drawPixel(9, 6, iconColor);  // 右下
+    // 中心圆
+    matrix.fillCircle(7, 4, 2, iconColor);
+  } else {
+    // 音量模式：显示喇叭图标
+    currentValue = currentVolume;
+    iconColor = C_BLUE;
+    // 喇叭图标 (从 (4,2) 开始)
+    matrix.drawPixel(5, 4, iconColor);      // 喇叭尖
+    matrix.fillRect(6, 3, 2, 3, iconColor); // 喇叭身
+    matrix.drawLine(8, 2, 8, 6, iconColor); // 喇叭口
+    // 声波
+    matrix.drawPixel(10, 3, iconColor);
+    matrix.drawPixel(10, 5, iconColor);
+    matrix.drawPixel(11, 4, iconColor);
+  }
+
+  // 显示数值 (行 9-13)
+  matrix.setTextColor(C_WHITE);
+  matrix.setCursor(2, 13);
+  char buf[4];
+  sprintf(buf, "%3d", currentValue);
+  matrix.print(buf);
+
+  // 底部进度条 (列 3-12，共10格)
+  int litLeds = currentValue / 10;
+  for (int i = 0; i < 10; i++) {
+    int x = 3 + i;
+    if (i < litLeds) {
+      matrix.drawPixel(x, 15, C_GREEN);
+    } else {
+      matrix.drawPixel(x, 15, C_RED);
+    }
+  }
+
+  enforcePowerLimit();
   requestDisplayUpdate();
   xSemaphoreGiveRecursive(displayMutex); // [Unlock]
 }
@@ -1016,6 +1156,7 @@ void setup() {
 
   // [Audio] 初始化蜂鸣器
   audio.begin();
+  // 音量将在 loadData() 后设置
 
   // [Moved to Core 0 Task] matrix.begin();
   matrix.setTextWrap(false);
@@ -1282,37 +1423,13 @@ void loop() {
         lastTriggerTime = now;
         pressTimeGood = now;
         longPressHandledGood = false;
-        lastBrtAdjustTime = 0; // 重置调整时间
       }
-      // 长按2秒后开始增加亮度，之后每1秒增加一次
-      if (rGood == LOW && (now - pressTimeGood > LONG_PRESS_DURATION)) {
-        // 第一次触发
-        if (!longPressHandledGood) {
-          changeBrightness(BRT_STEP);
-          lastBrtAdjustTime = now;
-          longPressHandledGood = true;
-        }
-        // 持续按住，每1秒增加一次
-        else if (now - lastBrtAdjustTime >= BRT_ADJUST_INTERVAL) {
-          changeBrightness(BRT_STEP);
-          lastBrtAdjustTime = now;
-        }
-      }
+      // [移除] 原长按增加亮度逻辑已移至设置菜单
       if (rGood == HIGH && lastStateGood == LOW) {
         lastTriggerTime = now;
-        if (!longPressHandledGood)
+        if (!longPressHandledGood) {
           triggerShot(1);
-        triggerCameraSequence();
-        lastBrtAdjustTime = 0; // 松开按键时重置
-
-        // 如果是长按松手（即刚调完亮度），恢复界面
-        if (longPressHandledGood) {
-          if (currentState == STATE_PLAYING)
-            drawPlayingUI();
-          else if (currentState == STATE_SUMMARY_GROUP)
-            drawGroupSummary();
-          else if (currentState == STATE_SUMMARY_FINAL)
-            drawFinalSummary();
+          triggerCameraSequence();
         }
       }
 
@@ -1338,38 +1455,26 @@ void loop() {
         lastTriggerTime = now;
         pressTimeBad = now;
         longPressHandledBad = false;
-        lastBrtAdjustTime = 0; // 重置调整时间
       }
-      // 长按2秒后开始减少亮度，之后每1秒减少一次
-      if (rBad == LOW && (now - pressTimeBad > LONG_PRESS_DURATION)) {
-        // 第一次触发
-        if (!longPressHandledBad) {
-          changeBrightness(-BRT_STEP);
-          lastBrtAdjustTime = now;
-          longPressHandledBad = true;
-        }
-        // 持续按住，每1秒减少一次
-        else if (now - lastBrtAdjustTime >= BRT_ADJUST_INTERVAL) {
-          changeBrightness(-BRT_STEP);
-          lastBrtAdjustTime = now;
-        }
+      // [修改] 长按红键3秒进入设置菜单
+      if (rBad == LOW && !longPressHandledBad &&
+          (now - pressTimeBad > 3000)) { // 3秒进入设置
+        currentState = STATE_SETTINGS;
+        settingsMode = 0; // 默认亮度模式
+        playSound(5);
+        drawSettingsUI();
+        longPressHandledBad = true;
+        // 等待松开按键
+        while (digitalRead(PIN_BTN_BAD) == LOW)
+          delay(10);
+        lastStateBad = HIGH;
+        return;
       }
       if (rBad == HIGH && lastStateBad == LOW) {
         lastTriggerTime = now;
         if (!longPressHandledBad) {
           triggerShot(3);
           triggerCameraSequence();
-        }
-        lastBrtAdjustTime = 0; // 松开按键时重置
-
-        // 如果是长按松手（即刚调完亮度），恢复界面
-        if (longPressHandledBad) {
-          if (currentState == STATE_PLAYING)
-            drawPlayingUI();
-          else if (currentState == STATE_SUMMARY_GROUP)
-            drawGroupSummary();
-          else if (currentState == STATE_SUMMARY_FINAL)
-            drawFinalSummary();
         }
       }
       lastStateGood = rGood;
@@ -1425,6 +1530,86 @@ void loop() {
       summaryPage = (summaryPage + 1) % 3;
       drawFinalSummary();
     }
+    lastStateBad = rBad;
+  } else if (currentState == STATE_SETTINGS) {
+    // 设置菜单按键处理
+    static unsigned long settingsPressTimeGood = 0;
+    static bool settingsLongPressGood = false;
+    static unsigned long settingsLastActionTime = 0; // [新增] 冷却计时器
+    const unsigned long SETTINGS_COOLDOWN = 500;     // 500ms 冷却时间
+
+    // 绿键：短按切换模式，长按3秒退出
+    if (rGood == LOW && lastStateGood == HIGH) {
+      settingsPressTimeGood = now;
+      settingsLongPressGood = false;
+    }
+    if (rGood == LOW && !settingsLongPressGood &&
+        (now - settingsPressTimeGood > 3000)) {
+      // 长按3秒退出设置
+      settingsLongPressGood = true;
+      saveData(); // 保存设置
+      playSound(5);
+      currentState = STATE_PLAYING;
+      drawPlayingUI();
+      while (digitalRead(PIN_BTN_GOOD) == LOW)
+        delay(10);
+      lastStateGood = HIGH;
+      return;
+    }
+    if (rGood == HIGH && lastStateGood == LOW) {
+      unsigned long pressDuration = now - settingsPressTimeGood;
+      // [冷却] 检查是否过了冷却时间
+      if (!settingsLongPressGood && pressDuration < 1000 &&
+          (now - settingsLastActionTime > SETTINGS_COOLDOWN)) {
+        // 短按切换模式
+        settingsMode = (settingsMode + 1) % SETTINGS_MODE_COUNT;
+        playSound(1);
+        drawSettingsUI();
+        settingsLastActionTime = now; // 记录操作时间
+      }
+    }
+
+    // [冷却] 只有过了冷却时间才响应
+    if (now - settingsLastActionTime > SETTINGS_COOLDOWN) {
+      // 黄键：增加数值
+      if (rNorm == LOW && lastStateNormal == HIGH) {
+        if (settingsMode == 0) {
+          currentBrightness += SETTING_STEP;
+          if (currentBrightness > BRT_MAX)
+            currentBrightness = BRT_MAX;
+          matrix.setBrightness(currentBrightness);
+        } else {
+          currentVolume += SETTING_STEP;
+          if (currentVolume > VOL_MAX)
+            currentVolume = VOL_MAX;
+          audio.setVolume(currentVolume);
+        }
+        playSound(1);
+        drawSettingsUI();
+        settingsLastActionTime = now; // 记录操作时间
+      }
+
+      // 红键：减少数值
+      if (rBad == LOW && lastStateBad == HIGH) {
+        if (settingsMode == 0) {
+          currentBrightness -= SETTING_STEP;
+          if (currentBrightness < BRT_MIN)
+            currentBrightness = BRT_MIN;
+          matrix.setBrightness(currentBrightness);
+        } else {
+          currentVolume -= SETTING_STEP;
+          if (currentVolume < VOL_MIN)
+            currentVolume = VOL_MIN;
+          audio.setVolume(currentVolume);
+        }
+        playSound(1);
+        drawSettingsUI();
+        settingsLastActionTime = now; // 记录操作时间
+      }
+    }
+
+    lastStateGood = rGood;
+    lastStateNormal = rNorm;
     lastStateBad = rBad;
   }
 

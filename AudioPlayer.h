@@ -143,11 +143,11 @@ public:
   }
 
   void setVolume(uint8_t percent) {
-    // Map 0-100% to Duty Cycle 0 - 2048 (Max 50% duty is loudest)
-    // 4096 / 2 = 2048
+    // Map 0-100% to Duty Cycle 0 - 1024 (Max ~25% duty for best sound)
+    // 太高的占空比会导致声音失真
     if (percent > 100)
       percent = 100;
-    _volumeDuty = (2048 * percent) / 100;
+    _volumeDuty = (1024 * percent) / 100; // 最大 1024 (25% 占空比)
   }
 
   void play(const Note *melody, int count) {
