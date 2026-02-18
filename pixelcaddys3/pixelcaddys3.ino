@@ -386,8 +386,8 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
   }
 
   void onRead(BLECharacteristic *pCharacteristic) {
-    // H = bonded device count (>0 means HID keyboard has been paired)
-    int bondedCount = esp_ble_get_bond_device_num();
+    // H = -1 (Unknown/Not Supported in this version)
+    int bondedCount = -1;
     // Return config: B=brightness, V=volume, H=HID paired, C=camera mode
     String configStr = "B:" + String(currentBrightness) +
                        ",V:" + String(currentVolume) +

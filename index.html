@@ -1201,7 +1201,8 @@
                     style="margin-top:16px;padding:12px 20px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;text-align:center;">
                     蓝牙键盘：<span id="hidStatusText" style="color:rgba(255,255,255,0.4);">未检测</span>
                 </div>
-                <input type="file" accept="video/*" capture="environment" id="cameraInput" style="display:none;">
+                <input type="file" accept="video/*" capture="environment" id="cameraInput" style="display:none;"
+                    onchange="handleCameraInput(this)">
                 <button onclick="document.getElementById('cameraInput').click()"
                     style="margin-top:12px;width:100%;max-width:260px;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.2s;">
                     🎬 开始录像
@@ -1573,17 +1574,11 @@
                             document.getElementById('sliderVolume').value = val;
                             document.getElementById('valVolume').textContent = val;
                         } else if (key === 'H') {
-                            // H = bonded device count; >0 means HID keyboard has been paired
-                            const count = parseInt(val);
+                            // H = bonded device count (-1 means check disabled/unknown)
+                            // Since we can't reliably detect it on some ESP32 cores, just show a static hint
                             const hidEl = document.getElementById('hidStatusText');
-                            if (count > 0) {
-                                hidEl.textContent = '已配对';
-                                hidEl.style.color = '#C4F82A';
-                            } else {
-                                hidEl.textContent = '未配对 (请在手机蓝牙设置中配对)';
-                                hidEl.style.color = '#EF4444';
-                            }
-                        } else if (key === 'C') {
+                            hidEl.textContent = '未检测 (请按设备任意键以确认连接)';
+                            hidEl.style.color = 'rgba(255,255,255,0.5)';
                             // C = camera mode (1=on, 0=off), sync toggle button state
                             const camOn = val === '1';
                             cameraMode = camOn;
@@ -1600,6 +1595,18 @@
                                 label.style.color = '#C4F82A';
                                 hint.innerHTML = '拍照遥控已开启<br>按下设备按键即可拍照';
                             }
+                        }
+                    });
+
+                    // [NEW] Global Key Listener for HID Detection
+                    window.addEventListener('keydown', (e) => {
+                        // Verify it's a volume key or enter (device sends VolumeUp)
+                        // But catching ANY key is good enough proof of HID connection
+                        console.log("Key detected:", e.code, e.key);
+                        const hidEl = document.getElementById('hidStatusText');
+                        if (hidEl && hidEl.textContent.includes('请按')) {
+                            hidEl.textContent = '已配对 (检测到按键)';
+                            hidEl.style.color = '#C4F82A';
                         }
                     });
                 } catch (e) {
@@ -1985,6 +1992,32 @@
                 label.style.color = 'rgba(255,255,255,0.5)';
                 hint.innerHTML = '点击按钮切换到拍照遥控模式<br>设备上的按键将变为快门遥控';
                 await sendConfig('M:N');
+            }
+        }
+
+        // Handle camera input (prevent crash on large files)
+        function handleCameraInput(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                console.log(`Captured file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+                // Show feedback
+                const hint = document.getElementById('remoteModeHint');
+                const originalHint = hint.innerHTML;
+
+                hint.innerHTML = '<span style="color:#C4F82A">✅ 录像已完成<br><span style="font-size:11px;color:rgba(255,255,255,0.5)">(注意：网页版相机可能无法直接保存到相册，建议使用系统相机App配合遥控器使用)</span></span>';
+
+                // Clear input to free memory immediately
+                input.value = '';
+
+                // Restore hint after 5 seconds
+                setTimeout(() => {
+                    if (cameraMode) {
+                        hint.innerHTML = '拍照遥控已开启<br>按下设备按键即可拍照';
+                    } else {
+                        hint.innerHTML = '点击按钮切换到拍照遥控模式<br>设备上的按键将变为快门遥控';
+                    }
+                }, 5000);
             }
         }
 
