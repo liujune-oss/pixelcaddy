@@ -1209,34 +1209,37 @@
                 <div class="section-head" style="margin-bottom:16px;">
                     <h2 style="color:#EF4444;">危险区域</h2>
                 </div>
-                <div class="danger-zone" style="margin:0;">
-                    <button class="danger-btn" onclick="clearAllData()">
-                        ⚠️ 清除设备全部数据
-                    </button>
-                </div>
+                <button class="danger-btn" onclick="enterOTAMode()"
+                    style="width:100%;margin-bottom:12px;background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:#34D399;">
+                    📡 进入 OTA 升级模式
+                </button>
+                <button class="danger-btn" onclick="clearAllData()">
+                    ⚠️ 清除设备全部数据
+                </button>
             </div>
         </div>
+    </div>
 
-        <!-- Tab Fade & Tab Bar -->
-        <div class="tab-fade" id="tabFade"></div>
-        <div class="tab-bar" id="tabBar">
-            <button class="tab-item active" onclick="switchTab('dashboard', this)">
-                <i data-lucide="layout-dashboard"></i>
-                <span>仪表盘</span>
-            </button>
-            <button class="tab-item" onclick="switchTab('detail', this)">
-                <i data-lucide="list"></i>
-                <span>明细</span>
-            </button>
-            <button class="tab-item">
-                <i data-lucide="camera"></i>
-                <span>遥控</span>
-            </button>
-            <button class="tab-item" onclick="switchTab('settings', this)">
-                <i data-lucide="settings"></i>
-                <span>设置</span>
-            </button>
-        </div>
+    <!-- Tab Fade & Tab Bar -->
+    <div class="tab-fade" id="tabFade"></div>
+    <div class="tab-bar" id="tabBar">
+        <button class="tab-item active" onclick="switchTab('dashboard', this)">
+            <i data-lucide="layout-dashboard"></i>
+            <span>仪表盘</span>
+        </button>
+        <button class="tab-item" onclick="switchTab('detail', this)">
+            <i data-lucide="list"></i>
+            <span>明细</span>
+        </button>
+        <button class="tab-item">
+            <i data-lucide="camera"></i>
+            <span>遥控</span>
+        </button>
+        <button class="tab-item" onclick="switchTab('settings', this)">
+            <i data-lucide="settings"></i>
+            <span>设置</span>
+        </button>
+    </div>
     </div>
 
     <script>
@@ -1635,6 +1638,30 @@
         }
 
         // =================== WIPE DATA ===================
+        async function enterOTAMode() {
+            if (!device || !device.gatt.connected) {
+                showToast("请先连接设备");
+                return;
+            }
+            if (!confirm("确定要让设备进入 OTA 升级模式吗？\n\n设备将重启并尝试连接预设的 Wi-Fi。\n如果连接失败，设备将开启热点: Pixel Caddy OTA\n\n您需要访问 http://[设备IP]/update 或 http://192.168.4.1/update 进行升级。")) {
+                return;
+            }
+
+            try {
+                showStatus("正在发送 OTA 指令...");
+                const encoder = new TextEncoder();
+                await timeChar.writeValue(encoder.encode("OTAREQ"));
+                showStatus("指令已发送，设备将重启...");
+                setTimeout(() => {
+                    disconnect();
+                    alert("设备已重启进入 OTA 模式。\n\n1. 尝试连接预设 Wi-Fi (观察设备屏幕显示的 IP)\n2. 若失败，请连接热点: Pixel Caddy OTA (密码: 12345678)\n3. 访问 http://[IP]/update");
+                }, 1000);
+            } catch (e) {
+                console.error(e);
+                showToast("发送指令失败: " + e.message);
+            }
+        }
+
         async function clearAllData() {
             if (!confirm("⚠️ 危险操作：此操作将永久删除设备上的所有历史数据。\n\n确定继续吗？")) return;
             if (!historyChar) {

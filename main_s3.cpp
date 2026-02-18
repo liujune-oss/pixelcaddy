@@ -246,6 +246,15 @@ class TimeCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     // Fix: cast to String correctly
     String value = pCharacteristic->getValue().c_str();
+
+    // [New] OTA Trigger Command
+    if (value == "OTAREQ") {
+      Serial.println("OTA Triggered via BLE");
+      isOTAMode = true;
+      setupOTA();
+      return;
+    }
+
     if (value.length() > 0) {
       long t = value.toInt(); // e.g. "1700000000"
       if (t > 1600000000) {
@@ -1136,7 +1145,8 @@ void setupOTA() {
   WiFi.begin(ssid, password);
 
   int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 20) {
+  // Increase timeout to 15 seconds (30 * 500ms)
+  while (WiFi.status() != WL_CONNECTED && timeout < 30) {
     delay(500);
     matrix.drawPixel(0, 0, (timeout % 2 == 0) ? C_BLUE : 0);
     matrix.show();
@@ -1242,15 +1252,6 @@ void setup() {
   pHidDevice->manufacturer()->setValue("Espressif");
   pHidDevice->pnp(0x02, 0xe502, 0xa111, 0x0210);
   pHidDevice->hidInfo(0x00, 0x01);
-  // [Fix] Manual Firmware Version since BLEHIDDevice doesn't expose it
-  BLEService *pDevInfo = pServer->getServiceByUUID("180a");
-  if (pDevInfo == nullptr) {
-    pDevInfo = pServer->createService(BLEUUID((uint16_t)0x180A));
-    pDevInfo->start();
-  }
-  BLECharacteristic *pFirmware = pDevInfo->createCharacteristic(
-      (uint16_t)0x2A26, BLECharacteristic::PROPERTY_READ);
-  pFirmware->setValue("v2.2.0");
 
   BLESecurity *pSecurity = new BLESecurity();
   pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
