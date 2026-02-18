@@ -69,7 +69,7 @@
         }
 
         .app {
-            max-width: 430px;
+            max-width: 768px;
             margin: 0 auto;
             min-height: 100vh;
             position: relative;
@@ -552,7 +552,7 @@
 
         .chart-container {
             position: relative;
-            height: 200px;
+            height: 350px;
             width: 100%;
         }
 
@@ -740,6 +740,12 @@
         }
 
         /* Gradient fade above tab bar */
+        .tab-item.active svg {
+            stroke: var(--accent-lime);
+            color: var(--accent-lime);
+            filter: drop-shadow(0 0 8px var(--accent-lime-glow));
+        }
+
         .tab-fade {
             position: fixed;
             bottom: 0;
@@ -1199,7 +1205,13 @@
                 </div>
                 <div id="hidStatus"
                     style="margin-top:16px;padding:12px 20px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;text-align:center;">
-                    蓝牙键盘：<span id="hidStatusText" style="color:rgba(255,255,255,0.4);">未检测</span>
+                    蓝牙键盘：<span id="hidStatusText" style="color:rgba(255,255,255,0.4);">未检测 (请按设备任意键以确认连接)</span>
+                    <div style="margin-top:8px;">
+                        <button onclick="sendConfig('M:T')"
+                            style="background:rgba(255,255,255,0.1);border:none;border-radius:6px;color:#fff;padding:6px 12px;font-size:12px;cursor:pointer;">
+                            🔄 发送测试指令 (设备应回传按键)
+                        </button>
+                    </div>
                 </div>
                 <input type="file" accept="video/*" capture="environment" id="cameraInput" style="display:none;"
                     onchange="handleCameraInput(this)">
@@ -1347,7 +1359,7 @@
     <script>
         // =================== DASHBOARD VERSION ===================
         // 每次修改 dashboard 时，在这里更新版本号
-        const DASHBOARD_VERSION = 'v2.8.0';
+        const DASHBOARD_VERSION = 'v3.0.0';
 
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -1446,7 +1458,6 @@
                             labels: {
                                 font: { size: 11, family: "'Space Mono', monospace" },
                                 usePointStyle: true,
-                                pointStyleWidth: 10,
                                 padding: 16,
                                 color: '#A1A1AA'
                             }
@@ -1469,7 +1480,7 @@
                                 font: { size: 10, family: "'Space Mono', monospace" }
                             },
                             title: {
-                                display: true,
+                                display: false,
                                 text: '球数',
                                 color: '#71717A',
                                 font: { size: 10, family: "'Space Mono', monospace" }
@@ -1487,7 +1498,7 @@
                                 font: { size: 10, family: "'Space Mono', monospace" }
                             },
                             title: {
-                                display: true,
+                                display: false,
                                 text: '得分',
                                 color: '#FFFFFF',
                                 font: { size: 10, family: "'Space Mono', monospace" }
@@ -1855,10 +1866,15 @@
                 document.getElementById('trendBad').textContent = '--';
             }
 
-            // Update Progress
-            const totalGroups = params.length;
-            document.getElementById('progressLabel').textContent = `${totalGroups} 组已完成`;
-            const progressPct = Math.min((totalGroups / 10) * 100, 100);
+            // Update Progress (Current Big Group)
+            const totalGroups = params.length; // Restoration
+            const currentIdx = latest.i;
+            const bigGroup = Math.ceil(currentIdx / 10);
+            let progressInBatch = currentIdx % 10;
+            if (progressInBatch === 0 && currentIdx > 0) progressInBatch = 10;
+
+            document.getElementById('progressLabel').textContent = `第 ${bigGroup} 大组 · ${progressInBatch}/10 组`;
+            const progressPct = (progressInBatch / 10) * 100;
             document.getElementById('progressBar').style.width = progressPct + '%';
 
             // Update Group/Shot indicator
@@ -1956,16 +1972,37 @@
         // =================== TREND HELPER ===================
         function updateTrend(spanId, current, previous) {
             const el = document.getElementById(spanId);
+            let pct = 0;
+            let iconName = 'minus';
+
             if (previous === 0 && current === 0) {
-                el.textContent = '0%';
-                return;
+                pct = 0;
+            } else if (previous === 0) {
+                pct = 100;
+                iconName = 'trending-up';
+            } else {
+                pct = Math.round(((current - previous) / previous) * 100);
+                if (pct > 0) iconName = 'trending-up';
+                else if (pct < 0) iconName = 'trending-down';
             }
-            if (previous === 0) {
-                el.textContent = '+100%';
-                return;
-            }
-            const pct = Math.round(((current - previous) / previous) * 100);
+
             el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+
+            // Update Icon
+            const container = el.parentElement;
+            const existingIcon = container.querySelector('svg') || container.querySelector('i');
+            if (existingIcon) existingIcon.remove();
+
+            const newIcon = document.createElement('i');
+            newIcon.setAttribute('data-lucide', iconName);
+            newIcon.style.width = '14px';
+            newIcon.style.height = '14px';
+            newIcon.style.display = 'inline';
+            newIcon.style.verticalAlign = 'middle';
+            newIcon.style.marginRight = '4px'; // Maintain spacing
+
+            container.insertBefore(newIcon, el);
+            lucide.createIcons({ root: container });
         }
 
         // =================== CAMERA REMOTE ===================

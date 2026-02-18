@@ -13,7 +13,7 @@
  */
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
-#define FIRMWARE_VERSION "v2.6.5" // [新增] 便于修改固件版本
+#define FIRMWARE_VERSION "v3.0.0" // [新增] 便于修改固件版本
 
 #include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
@@ -320,6 +320,8 @@ enum GameState {
 };
 GameState currentState = STATE_PLAYING;
 void drawPlayingUI(); // Forward declaration
+bool shouldSendTestKey =
+    false; // [New] Flag to handle test key sending in main loop
 
 class ConfigCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
@@ -357,12 +359,25 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
         Serial.printf("BLE Set Volume: %d\n", val);
       } else if (type == 'M') {
         // Mode switch: equivalent to Green+Normal combo key
+        // Mode switch: equivalent to Green+Normal combo key
         char mode = value.charAt(2);
+
+        if (mode == 'T') {
+          // [New] Test Connection: Set flag to send key in main loop
+          // Sending directly from callback causes issues with NimBLE/Bluedroid
+          // stack
+          shouldSendTestKey = true;
+          Serial.println("BLE Mode: Test Key Requested");
+          return; // Exit early for test mode
+        }
+
+        // C/N modes: Toggle camera remote
         if (mode == 'C') {
           isAutoRecordEnabled = true;
         } else if (mode == 'N') {
           isAutoRecordEnabled = false;
         }
+
         // Show CAM ON/OFF on LED (same as combo key)
         xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY);
         matrix.fillScreen(0);
@@ -1426,6 +1441,14 @@ void loop() {
   if (millis() - lastBatteryUpdate > BATTERY_UPDATE_INTERVAL) {
     lastBatteryUpdate = millis();
     updateBatteryBLE();
+  }
+
+  // Handle BLE Test Key Request (moved from callback)
+  if (shouldSendTestKey) {
+    shouldSendTestKey = false;
+    sendHIDKey(0x14); // Send 'q' for Test
+    audio.playBeep();
+    Serial.println("Loop: Sent Test Key");
   }
 
   if (isOTAMode) {
