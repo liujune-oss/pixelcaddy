@@ -345,6 +345,16 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
 
         audio.playBeep(); // [New] Feedback beep
         Serial.printf("BLE Set Volume: %d\n", val);
+      } else if (type == 'M') {
+        // Mode switch: C = Camera Remote, N = Normal
+        char mode = value.charAt(2);
+        if (mode == 'C') {
+          isCameraRemoteMode = true;
+          Serial.println("BLE Mode: Camera Remote");
+        } else if (mode == 'N') {
+          isCameraRemoteMode = false;
+          Serial.println("BLE Mode: Normal");
+        }
       }
     }
   }
@@ -427,6 +437,7 @@ enum GameState {
   STATE_SETTINGS
 };
 GameState currentState = STATE_PLAYING;
+bool isCameraRemoteMode = false; // [New] Camera remote mode flag
 
 // 结算显示控制
 unsigned long summaryTimer = 0;

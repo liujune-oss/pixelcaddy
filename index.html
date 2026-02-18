@@ -1154,6 +1154,31 @@
             </div>
         </div>
 
+        <!-- =================== REMOTE SCREEN =================== -->
+        <div id="remoteScreen">
+            <div class="detail-header">
+                <div>
+                    <h1>遥控</h1>
+                    <div class="subtitle">蓝牙拍照遥控器</div>
+                </div>
+            </div>
+
+            <div
+                style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;gap:24px;flex:1;">
+                <div id="remoteModeLabel" style="font-size:16px;color:rgba(255,255,255,0.5);letter-spacing:1px;">
+                    当前模式：普通模式</div>
+                <button id="remoteModeBtn" onclick="toggleCameraMode()"
+                    style="width:180px;height:180px;border-radius:50%;border:3px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-size:20px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:all 0.3s ease;box-shadow:0 0 30px rgba(0,0,0,0.3);">
+                    <span style="font-size:48px;">📷</span>
+                    <span id="remoteBtnText">拍照模式</span>
+                </button>
+                <div id="remoteModeHint"
+                    style="font-size:13px;color:rgba(255,255,255,0.35);text-align:center;max-width:260px;line-height:1.6;">
+                    点击按钮切换到拍照遥控模式<br>设备上的按键将变为快门遥控
+                </div>
+            </div>
+        </div>
+
         <!-- =================== SETTINGS SCREEN =================== -->
         <div id="settingsScreen">
             <div class="detail-header">
@@ -1277,7 +1302,7 @@
             <i data-lucide="list"></i>
             <span>明细</span>
         </button>
-        <button class="tab-item">
+        <button class="tab-item" onclick="switchTab('remote', this)">
             <i data-lucide="camera"></i>
             <span>遥控</span>
         </button>
@@ -1843,6 +1868,7 @@
             document.getElementById('connectScreen').style.display = 'flex';
             document.getElementById('dashboardScreen').style.display = 'none';
             document.getElementById('detailScreen').style.display = 'none';
+            document.getElementById('remoteScreen').style.display = 'none';
             document.getElementById('settingsScreen').style.display = 'none';
             document.getElementById('tabBar').style.display = 'none';
             document.getElementById('tabFade').style.display = 'none';
@@ -1871,6 +1897,39 @@
             el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
         }
 
+        // =================== CAMERA REMOTE ===================
+        let cameraMode = false;
+
+        async function toggleCameraMode() {
+            cameraMode = !cameraMode;
+            const btn = document.getElementById('remoteModeBtn');
+            const btnText = document.getElementById('remoteBtnText');
+            const label = document.getElementById('remoteModeLabel');
+            const hint = document.getElementById('remoteModeHint');
+
+            if (cameraMode) {
+                // Activate camera mode
+                btn.style.background = 'rgba(196,248,42,0.15)';
+                btn.style.borderColor = '#C4F82A';
+                btn.style.boxShadow = '0 0 40px rgba(196,248,42,0.25)';
+                btnText.textContent = '普通模式';
+                label.textContent = '当前模式：📷 拍照遥控';
+                label.style.color = '#C4F82A';
+                hint.innerHTML = '拍照遥控已开启<br>按下设备按键即可拍照';
+                await sendConfig('M:C');
+            } else {
+                // Deactivate camera mode
+                btn.style.background = 'rgba(255,255,255,0.06)';
+                btn.style.borderColor = 'rgba(255,255,255,0.15)';
+                btn.style.boxShadow = '0 0 30px rgba(0,0,0,0.3)';
+                btnText.textContent = '拍照模式';
+                label.textContent = '当前模式：普通模式';
+                label.style.color = 'rgba(255,255,255,0.5)';
+                hint.innerHTML = '点击按钮切换到拍照遥控模式<br>设备上的按键将变为快门遥控';
+                await sendConfig('M:N');
+            }
+        }
+
         // =================== TAB SWITCHING ===================
         function switchTab(tabName, btnEl) {
             // Update active tab
@@ -1880,6 +1939,7 @@
             // Switch screens
             document.getElementById('dashboardScreen').style.display = (tabName === 'dashboard') ? 'flex' : 'none';
             document.getElementById('detailScreen').style.display = (tabName === 'detail') ? 'flex' : 'none';
+            document.getElementById('remoteScreen').style.display = (tabName === 'remote') ? 'flex' : 'none';
             document.getElementById('settingsScreen').style.display = (tabName === 'settings') ? 'flex' : 'none';
 
             if (tabName === 'detail') {
