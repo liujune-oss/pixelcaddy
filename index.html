@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
@@ -8,227 +8,921 @@
 
     <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1a1a1a">
+    <meta name="theme-color" content="#0A0A0A">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icon.png">
 
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
     <style>
         :root {
-            --primary: #00ff88;
-            --bg: #1a1a1a;
-            --card: #2d2d2d;
-            --text: #ffffff;
-            --c-good: #00ff88;
-            --c-norm: #ffcc00;
-            --c-bad: #ff4444;
-            --c-score: #ffffff;
-            /* 新增白色变量 */
+            --bg-pitch: #0A0A0A;
+            --bg-zinc: #18181B;
+            --border-zinc: #27272A;
+            --border-hover: #3F3F46;
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            --text-muted: #71717A;
+            --text-dim: #52525B;
+            --accent-lime: #C4F82A;
+            --accent-lime-dim: rgba(196, 248, 42, 0.25);
+            --accent-lime-glow: rgba(196, 248, 42, 0.3);
+            --color-good: #C4F82A;
+            --color-normal: #FA541C;
+            --color-bad: #7C3AED;
+            --color-score: #FFFFFF;
+            --color-success: #22C55E;
+            --radius-lg: 20px;
+            --radius-md: 16px;
+            --radius-sm: 12px;
+            --radius-pill: 100px;
+            --font-headline: 'Space Grotesk', sans-serif;
+            --font-body: 'Manrope', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 20px;
+            font-family: var(--font-body);
+            background: var(--bg-pitch);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .app {
+            max-width: 430px;
+            margin: 0 auto;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* =================== BLE CONNECT SCREEN =================== */
+        #connectScreen {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 60px 24px 40px;
+        }
+
+        .connect-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+
+        .connect-header h1 {
+            font-family: var(--font-headline);
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .connect-header .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .version-badge {
+            background: var(--border-zinc);
+            padding: 4px 10px;
+            border-radius: var(--radius-pill);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .ble-visual {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+        }
+
+        .ble-rings {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+
+        .ble-rings .ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid var(--border-zinc);
+        }
+
+        .ble-rings .ring-3 {
+            inset: 0;
+        }
+
+        .ble-rings .ring-2 {
+            inset: 30px;
+            border-width: 1.5px;
+            border-color: var(--border-hover);
+        }
+
+        .ble-rings .ring-1 {
+            inset: 60px;
+            border-width: 2px;
+            border-color: var(--accent-lime-dim);
+            animation: pulse-ring 2s ease-in-out infinite;
+        }
+
+        .ble-rings .ble-icon-circle {
+            position: absolute;
+            inset: 75px;
+            background: linear-gradient(180deg, #C4F82A 0%, #87D918 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 40px var(--accent-lime-glow);
+        }
+
+        .ble-rings .ble-icon-circle i {
+            width: 26px;
+            height: 26px;
+            color: var(--bg-pitch);
+        }
+
+        @keyframes pulse-ring {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+
+        .scanning-ring {
+            animation: scan-expand 2.5s ease-out infinite;
+        }
+
+        @keyframes scan-expand {
+            0% { opacity: 0.6; transform: scale(0.8); }
+            100% { opacity: 0; transform: scale(1.3); }
+        }
+
+        .connect-status {
+            font-size: 16px;
+            color: var(--text-muted);
             text-align: center;
         }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            margin-bottom: 2rem;
-        }
-
-        button {
-            background: var(--primary);
-            color: #000;
+        .connect-btn {
+            width: 100%;
+            height: 56px;
+            background: linear-gradient(90deg, #C4F82A 0%, #A3E635 100%);
             border: none;
-            padding: 15px 30px;
-            font-size: 1.2rem;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
+            font-family: var(--font-headline);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--bg-pitch);
             cursor: pointer;
-            font-weight: bold;
-            transition: transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 24px var(--accent-lime-dim);
+            transition: transform 0.15s, box-shadow 0.15s;
         }
 
-        button:active {
-            transform: scale(0.95);
+        .connect-btn:active {
+            transform: scale(0.97);
         }
 
-        button:disabled {
-            background: #555;
+        .connect-btn:disabled {
+            background: var(--border-hover);
+            color: var(--text-muted);
+            box-shadow: none;
             cursor: not-allowed;
         }
 
-        .status {
-            margin: 20px 0;
-            color: #888;
-            font-size: 0.9rem;
+        .connect-btn i {
+            width: 22px;
+            height: 22px;
         }
 
-        .card {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        .feature-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 32px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px;
+            background: var(--bg-zinc);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-zinc);
+        }
+
+        .feature-item i {
+            width: 20px;
+            height: 20px;
+            color: var(--accent-lime);
+            flex-shrink: 0;
+        }
+
+        .feature-item .feature-text h4 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .feature-item .feature-text p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* =================== DASHBOARD SCREEN =================== */
+        #dashboardScreen {
             display: none;
+            flex-direction: column;
+            min-height: 100vh;
+            padding-bottom: 100px;
         }
 
-        .card.visible {
-            display: block;
+        .dash-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 60px 24px 16px;
+        }
+
+        .dash-header h1 {
+            font-family: var(--font-headline);
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .dash-header .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .ble-status-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .ble-status-btn:hover {
+            border-color: var(--accent-lime);
+        }
+
+        .ble-status-btn i {
+            width: 22px;
+            height: 22px;
+            color: var(--accent-lime);
+        }
+
+        .dash-content {
+            padding: 0 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Section Header */
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-head h2 {
+            font-family: var(--font-headline);
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .section-head .link {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-lime);
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-family: var(--font-body);
+        }
+
+        /* Metric Cards */
+        .metrics-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .metric-card {
+            flex: 1;
+            padding: 20px;
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .metric-card.good {
+            background: var(--accent-lime);
+            box-shadow: 0 4px 24px var(--accent-lime-dim);
+        }
+
+        .metric-card.good .metric-val {
+            color: var(--bg-pitch);
+            font-family: var(--font-headline);
+            font-size: 32px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .metric-card.good .metric-label {
+            color: var(--bg-pitch);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .metric-card.good .metric-trend {
+            color: #15803D;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .metric-card.neutral {
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+        }
+
+        .metric-card.neutral .metric-val {
+            font-family: var(--font-headline);
+            font-size: 32px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .metric-card.neutral .metric-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .metric-card.neutral .metric-trend {
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .metric-card.neutral .metric-trend.orange { color: var(--color-normal); }
+        .metric-card.neutral .metric-trend.lime { color: var(--accent-lime); }
+
+        /* Progress Section */
+        .progress-card {
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .progress-header .label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .progress-header .value {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--accent-lime);
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: var(--border-zinc);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #C4F82A, #87D918);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .progress-meta .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-lime);
+        }
+
+        .progress-meta .text {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Chart Card */
+        .chart-card {
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .chart-legend .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chart-legend .legend-dot {
+            width: 10px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .chart-legend .legend-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
         }
 
         .chart-container {
             position: relative;
-            height: 350px;
-            /*稍微加高一点*/
+            height: 200px;
             width: 100%;
-            margin-bottom: 20px;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-
-        th,
-        td {
-            padding: 12px;
+        .chart-formula {
             text-align: center;
-            border-bottom: 1px solid #444;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 12px;
         }
 
-        th {
-            color: #888;
-            font-weight: normal;
-            font-size: 0.9rem;
+        .chart-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            border-top: 1px solid var(--border-zinc);
+            padding-top: 16px;
         }
 
-        .score-good {
-            color: var(--c-good);
+        .chart-actions button {
+            flex: 1;
+            padding: 10px;
+            background: var(--border-zinc);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-family: var(--font-body);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
         }
 
-        .score-norm {
-            color: var(--c-norm);
+        .chart-actions button:hover {
+            background: var(--border-hover);
+            color: var(--text-primary);
         }
 
-        .score-bad {
-            color: var(--c-bad);
+        .page-status {
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
         }
 
-        .ts {
-            font-size: 0.8rem;
-            color: #666;
+        /* Device Status Card */
+        .device-card {
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .device-row {
+            display: flex;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border-zinc);
+        }
+
+        .device-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .device-row:first-child {
+            padding-top: 0;
+        }
+
+        .device-row i {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .device-row i.lime { color: var(--accent-lime); }
+        .device-row i.muted { color: var(--text-muted); }
+
+        .device-row .device-label {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .device-row .device-value {
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .device-row .device-value.lime { color: var(--accent-lime); }
+        .device-row .device-value.white { color: var(--text-primary); }
+
+        /* Danger Zone */
+        .danger-zone {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border-zinc);
+        }
+
+        .danger-btn {
+            width: 100%;
+            padding: 14px;
+            background: transparent;
+            border: 1px solid #DC2626;
+            border-radius: var(--radius-md);
+            color: #DC2626;
+            font-family: var(--font-body);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .danger-btn:hover {
+            background: rgba(220, 38, 38, 0.1);
+        }
+
+        /* Floating Tab Bar */
+        .tab-bar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 360px;
+            width: calc(100% - 48px);
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-pill);
+            padding: 8px 12px;
+            display: none;
+            justify-content: space-around;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 100;
+        }
+
+        .tab-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 16px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: background 0.2s;
+        }
+
+        .tab-item i {
+            width: 22px;
+            height: 22px;
+            color: var(--text-muted);
+        }
+
+        .tab-item span {
+            font-family: var(--font-body);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .tab-item.active i { color: var(--accent-lime); }
+        .tab-item.active span { color: var(--accent-lime); }
+
+        /* Gradient fade above tab bar */
+        .tab-fade {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            background: linear-gradient(transparent, var(--bg-pitch));
+            pointer-events: none;
+            display: none;
+            z-index: 99;
+        }
+
+        /* Status toast */
+        .status-toast {
+            position: fixed;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: var(--bg-zinc);
+            border: 1px solid var(--border-zinc);
+            border-radius: var(--radius-pill);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-secondary);
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .status-toast.visible {
+            opacity: 1;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <h1>Pixel Caddy Sync v1.3</h1>
-        <div id="batteryStatus" style="margin-bottom: 15px;">
-            <span style="font-size: 1.5rem;">🔋</span>
-            <span id="batteryPercent" style="font-size: 1rem; color: #888;">未读取</span>
-            <button id="readBatteryBtn" onclick="manualReadBattery()"
-                style="font-size: 0.8rem; padding: 4px 10px; margin-left: 10px; display: none;">🔄 手动读取</button>
-            <div id="batteryDebug" style="font-size: 0.75rem; color: #666; margin-top: 5px;"></div>
-        </div>
-        <button id="connectBtn">📡 Connect & Sync</button>
-        <div class="status" id="status">Ready to connect...</div>
+    <div class="app">
+        <!-- Status Toast -->
+        <div class="status-toast" id="statusToast"></div>
 
-        <div class="card" id="historyCard">
-            <h2>Performance Trend</h2>
-
-            <div class="chart-container">
-                <canvas id="trendChart"></canvas>
+        <!-- =================== CONNECT SCREEN =================== -->
+        <div id="connectScreen">
+            <div class="connect-header">
+                <div>
+                    <h1>Pixel Caddy</h1>
+                    <div class="subtitle">设备连接</div>
+                </div>
+                <div class="version-badge">v2.1.0</div>
             </div>
 
-            <div
-                style="display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; border-top: 1px solid #444; padding-top: 20px;">
-                <button onclick="refreshData()" style="font-size: 0.9rem; padding: 8px 16px;">🔄 Refresh
-                    (Latest)</button>
-                <button onclick="loadOlder()" style="font-size: 0.9rem; padding: 8px 16px;">⬇ Load Older</button>
-            </div>
-            <div id="pageStatus" style="margin-bottom: 10px; font-size: 0.8rem; color: #888;"></div>
+            <div class="ble-visual">
+                <div class="ble-rings">
+                    <div class="ring ring-3"></div>
+                    <div class="ring ring-2"></div>
+                    <div class="ring ring-1"></div>
+                    <div class="ble-icon-circle">
+                        <i data-lucide="bluetooth"></i>
+                    </div>
+                </div>
 
-            <h3>History</h3>
-            <table id="historyTable">
-                <thead>
-                    <tr>
-                        <th>Group</th>
-                        <th>Score</th>
-                        <th>Details (G/N/B)</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                </tbody>
-            </table>
+                <div class="connect-status" id="connectStatus">搜索 Pixel Caddy 设备...</div>
 
-            <div style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;">
-                <button onclick="clearAllData()" style="background: #ff4444; color: white; font-size: 0.9rem;">
-                    ⚠️ Clear All Data on Device
+                <button class="connect-btn" id="connectBtn">
+                    <i data-lucide="bluetooth"></i>
+                    连接并同步
                 </button>
             </div>
+
+            <div class="feature-list">
+                <div class="feature-item">
+                    <i data-lucide="timer"></i>
+                    <div class="feature-text">
+                        <h4>时间同步</h4>
+                        <p>自动同步手机时间到设备</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i data-lucide="download"></i>
+                    <div class="feature-text">
+                        <h4>数据同步</h4>
+                        <p>下载历史训练记录与统计数据</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <i data-lucide="battery-charging"></i>
+                    <div class="feature-text">
+                        <h4>电量监测</h4>
+                        <p>实时查看设备电池状态</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =================== DASHBOARD SCREEN =================== -->
+        <div id="dashboardScreen">
+            <!-- Header -->
+            <div class="dash-header">
+                <div>
+                    <h1>Pixel Caddy</h1>
+                    <div class="subtitle">训练管理仪表盘</div>
+                </div>
+                <button class="ble-status-btn" id="bleStatusBtn" title="蓝牙已连接">
+                    <i data-lucide="bluetooth"></i>
+                </button>
+            </div>
+
+            <div class="dash-content">
+                <!-- Metrics -->
+                <div>
+                    <div class="section-head" style="margin-bottom:16px;">
+                        <h2>本组统计</h2>
+                    </div>
+                    <div class="metrics-row">
+                        <div class="metric-card good">
+                            <div class="metric-val" id="metricGood">-</div>
+                            <div class="metric-label">Good</div>
+                        </div>
+                        <div class="metric-card neutral">
+                            <div class="metric-val" id="metricNormal">-</div>
+                            <div class="metric-label">Normal</div>
+                        </div>
+                        <div class="metric-card neutral">
+                            <div class="metric-val" id="metricBad">-</div>
+                            <div class="metric-label">Bad</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress -->
+                <div>
+                    <div class="section-head" style="margin-bottom:16px;">
+                        <h2>当前进度</h2>
+                    </div>
+                    <div class="progress-card">
+                        <div class="progress-header">
+                            <span class="label">全场进度</span>
+                            <span class="value" id="progressLabel">0/0 组</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trend Chart -->
+                <div>
+                    <div class="section-head" style="margin-bottom:16px;">
+                        <h2>训练趋势</h2>
+                        <span class="link" id="pageStatusTop"></span>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-container">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                        <div class="chart-formula">得分 = (Good×100 + Normal×50) / 总球数</div>
+                        <div class="chart-actions">
+                            <button onclick="refreshData()">🔄 刷新数据</button>
+                            <button onclick="loadOlder()">⬇ 加载更多</button>
+                        </div>
+                        <div class="page-status" id="pageStatus"></div>
+                    </div>
+                </div>
+
+                <!-- Device Status -->
+                <div>
+                    <div class="section-head" style="margin-bottom:16px;">
+                        <h2>设备状态</h2>
+                    </div>
+                    <div class="device-card">
+                        <div class="device-row">
+                            <i data-lucide="battery-charging" class="lime"></i>
+                            <span class="device-label">电池电量</span>
+                            <span class="device-value lime" id="devBattery">--</span>
+                        </div>
+                        <div class="device-row">
+                            <i data-lucide="bluetooth" class="lime"></i>
+                            <span class="device-label">蓝牙连接</span>
+                            <span class="device-value lime" id="devBLE">已连接</span>
+                        </div>
+                        <div class="device-row">
+                            <i data-lucide="hard-drive" class="muted"></i>
+                            <span class="device-label">存储用量</span>
+                            <span class="device-value white" id="devStorage">--</span>
+                        </div>
+                        <div class="device-row">
+                            <i data-lucide="cpu" class="muted"></i>
+                            <span class="device-label">固件版本</span>
+                            <span class="device-value white">v2.1.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="danger-zone">
+                    <button class="danger-btn" onclick="clearAllData()">
+                        ⚠️ 清除设备全部数据
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Fade & Tab Bar -->
+        <div class="tab-fade" id="tabFade"></div>
+        <div class="tab-bar" id="tabBar">
+            <button class="tab-item active">
+                <i data-lucide="layout-dashboard"></i>
+                <span>仪表盘</span>
+            </button>
+            <button class="tab-item" onclick="refreshData()">
+                <i data-lucide="bar-chart-2"></i>
+                <span>统计</span>
+            </button>
+            <button class="tab-item">
+                <i data-lucide="camera"></i>
+                <span>遥控</span>
+            </button>
+            <button class="tab-item" onclick="disconnect()">
+                <i data-lucide="settings"></i>
+                <span>断开</span>
+            </button>
         </div>
     </div>
 
     <script>
+        // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_HISTORY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26ac";
         const CHAR_TIME_UUID = "87a7d400-5343-4565-a9b7-1601b0034876";
         const CHAR_BATTERY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a1";
 
+        // =================== STATE ===================
         let device, server, service, historyChar, timeChar, batteryChar;
         let historyData = {};
         let currentPage = 0;
         let myChart = null;
 
-        document.getElementById('connectBtn').addEventListener('click', connect);
+        // =================== INIT LUCIDE ICONS ===================
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
 
-        async function clearAllData() {
-            if (!confirm("⚠️ DANGER: This will permanently delete ALL history data on the Pixel Caddy device.\n\nAre you sure you want to continue?")) {
-                return;
-            }
-
-            if (!historyChar) {
-                alert("Device not connected!");
-                return;
-            }
-
-            try {
-                updateStatus("Wiping Data...");
-                const encoder = new TextEncoder();
-                const data = encoder.encode("WIPE");
-                await historyChar.writeValue(data);
-
-                // Clear local data
-                historyData = {};
-                updateUI();
-                alert("Wipe Command Sent. Device should beep to confirm.");
-                updateStatus("Data Wiped.");
-
-            } catch (error) {
-                console.error("Wipe Failed:", error);
-                alert("Failed to send command: " + error.message);
-            }
-        }
-
+        // =================== CHART INIT ===================
         function initChart() {
-            if (myChart) {
-                myChart.destroy();
-            }
+            if (myChart) myChart.destroy();
             const ctx = document.getElementById('trendChart').getContext('2d');
-            Chart.defaults.color = '#888';
-            Chart.defaults.borderColor = '#444';
+
+            Chart.defaults.color = '#71717A';
+            Chart.defaults.borderColor = '#27272A';
 
             myChart = new Chart(ctx, {
                 type: 'line',
@@ -236,45 +930,53 @@
                     labels: [],
                     datasets: [
                         {
-                            label: 'Total Score', // 新增分数线
+                            label: '总得分',
                             data: [],
-                            borderColor: '#ffffff', // 白色
-                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            borderWidth: 3,
+                            borderColor: '#FFFFFF',
+                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            borderWidth: 2.5,
                             tension: 0.4,
-                            yAxisID: 'y1', // 关键：绑定到右侧 Y 轴
-                            order: 0 // 确保显示在最上层
+                            pointRadius: 3,
+                            pointBackgroundColor: '#FFFFFF',
+                            yAxisID: 'y1',
+                            order: 0
                         },
                         {
                             label: 'Good',
                             data: [],
-                            borderColor: '#00ff88',
-                            backgroundColor: 'rgba(0, 255, 136, 0.05)',
+                            borderColor: '#C4F82A',
+                            backgroundColor: 'rgba(196,248,42,0.08)',
                             borderWidth: 2,
                             tension: 0.3,
                             fill: true,
-                            yAxisID: 'y', // 绑定到左侧 Y 轴
+                            pointRadius: 2,
+                            pointBackgroundColor: '#C4F82A',
+                            yAxisID: 'y',
                             order: 1
                         },
                         {
                             label: 'Normal',
                             data: [],
-                            borderColor: '#ffcc00',
-                            backgroundColor: 'rgba(255, 204, 0, 0.05)',
+                            borderColor: '#FA541C',
+                            backgroundColor: 'rgba(250,84,28,0.05)',
                             borderWidth: 2,
                             tension: 0.3,
                             fill: true,
+                            pointRadius: 2,
+                            pointBackgroundColor: '#FA541C',
                             yAxisID: 'y',
                             order: 2
                         },
                         {
                             label: 'Bad',
                             data: [],
-                            borderColor: '#ff4444',
-                            backgroundColor: 'rgba(255, 68, 68, 0.05)',
+                            borderColor: '#7C3AED',
+                            backgroundColor: 'rgba(124,58,237,0.05)',
                             borderWidth: 2,
                             tension: 0.3,
                             fill: true,
+                            pointRadius: 2,
+                            pointBackgroundColor: '#7C3AED',
                             yAxisID: 'y',
                             order: 3
                         }
@@ -283,56 +985,72 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                font: { size: 11, family: "'Space Mono', monospace" },
+                                usePointStyle: true,
+                                pointStyleWidth: 10,
+                                padding: 16,
+                                color: '#A1A1AA'
+                            }
+                        }
                     },
                     scales: {
                         x: {
-                            grid: { display: false }
+                            grid: { display: false },
+                            ticks: {
+                                font: { size: 10, family: "'Space Mono', monospace" }
+                            }
                         },
-                        y: { // 左侧轴：数量
+                        y: {
                             type: 'linear',
                             display: true,
                             position: 'left',
                             beginAtZero: true,
                             suggestedMax: 10,
+                            ticks: {
+                                font: { size: 10, family: "'Space Mono', monospace" }
+                            },
                             title: {
                                 display: true,
-                                text: 'Shots Count'
+                                text: '球数',
+                                color: '#71717A',
+                                font: { size: 10, family: "'Space Mono', monospace" }
                             }
                         },
-                        y1: { // 右侧轴：分数
+                        y1: {
                             type: 'linear',
                             display: true,
                             position: 'right',
                             min: 0,
-                            max: 100, // 固定 0-100 分
-                            grid: {
-                                drawOnChartArea: false // 不画网格线，避免混乱
+                            max: 100,
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                color: '#FFFFFF',
+                                font: { size: 10, family: "'Space Mono', monospace" }
                             },
                             title: {
                                 display: true,
-                                text: 'Total Score',
-                                color: '#ffffff'
-                            },
-                            ticks: {
-                                color: '#ffffff'
+                                text: '得分',
+                                color: '#FFFFFF',
+                                font: { size: 10, family: "'Space Mono', monospace" }
                             }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: { font: { size: 12 }, usePointStyle: true }
                         }
                     }
                 }
             });
         }
 
+        // =================== BLE CONNECT ===================
+        document.getElementById('connectBtn').addEventListener('click', connect);
+
         async function connect() {
             try {
-                updateStatus("Searching...");
+                showStatus("搜索设备中...");
+                document.getElementById('connectBtn').disabled = true;
+
                 device = await navigator.bluetooth.requestDevice({
                     filters: [
                         { name: 'Pixel Caddy' },
@@ -342,114 +1060,99 @@
                 });
 
                 device.addEventListener('gattserverdisconnected', onDisconnected);
+                showStatus("正在连接...");
                 server = await device.gatt.connect();
                 service = await server.getPrimaryService(SERVICE_UUID);
 
-                updateStatus("Subscribing...");
+                showStatus("正在订阅数据...");
                 historyChar = await service.getCharacteristic(CHAR_HISTORY_UUID);
                 await historyChar.startNotifications();
                 historyChar.addEventListener('characteristicvaluechanged', handleHistoryNotification);
 
                 timeChar = await service.getCharacteristic(CHAR_TIME_UUID);
 
+                // Battery
                 try {
                     batteryChar = await service.getCharacteristic(CHAR_BATTERY_UUID);
                     await batteryChar.startNotifications();
                     batteryChar.addEventListener('characteristicvaluechanged', handleBatteryNotification);
-                    // 读取初始值
                     const batteryValue = await batteryChar.readValue();
                     const rawStr = new TextDecoder().decode(batteryValue);
                     updateBatteryDisplay(rawStr);
-                    document.getElementById('batteryDebug').textContent = '初始读取: "' + rawStr + '"';
-                    document.getElementById('readBatteryBtn').style.display = 'inline-block';
                 } catch (e) {
                     console.warn("Battery characteristic not available:", e);
-                    updateBatteryDisplay(null);
-                    document.getElementById('batteryDebug').textContent = '错误: ' + e.message;
                 }
 
-                document.getElementById('connectBtn').style.display = 'none';
-                document.getElementById('historyCard').classList.add('visible');
+                // Switch to Dashboard
+                document.getElementById('connectScreen').style.display = 'none';
+                document.getElementById('dashboardScreen').style.display = 'flex';
+                document.getElementById('tabBar').style.display = 'flex';
+                document.getElementById('tabFade').style.display = 'block';
 
                 initChart();
 
-                // [Fix] Sync Time FIRST, then request data. 
-                // This ensures the device has the correct timestamp before sending history.
-                updateStatus("Syncing Time...");
-                await syncTime().catch(e => console.warn("Time Sync skipped:", e));
+                // Sync Time
+                showStatus("正在同步时间...");
+                await syncTime().catch(e => console.warn("Time sync skipped:", e));
 
-                updateStatus("Loading Data...");
+                // Load Data
+                showStatus("正在加载数据...");
                 await requestPage(0);
+
+                setTimeout(() => showStatus("连接成功 ✓"), 500);
+                lucide.createIcons();
 
             } catch (error) {
                 console.error("Connect Error:", error);
-                updateStatus("Error: " + error.message);
+                showStatus("连接失败: " + error.message);
+                document.getElementById('connectBtn').disabled = false;
+            }
+        }
+
+        // =================== BLE HANDLERS ===================
+        function handleHistoryNotification(event) {
+            const decoder = new TextDecoder('utf-8');
+            const jsonStr = decoder.decode(event.target.value);
+            try {
+                const record = JSON.parse(jsonStr);
+                if (record && record.i) {
+                    historyData[record.i] = record;
+                    updateUI();
+                }
+            } catch (e) {
+                console.log("JSON Error:", e);
             }
         }
 
         function handleBatteryNotification(event) {
-            const value = event.target.value;
             const decoder = new TextDecoder('utf-8');
-            const percent = decoder.decode(value);
+            const percent = decoder.decode(event.target.value);
             updateBatteryDisplay(percent);
         }
 
         function updateBatteryDisplay(percent) {
-            const el = document.getElementById('batteryPercent');
+            const el = document.getElementById('devBattery');
             const pct = parseInt(percent);
             if (isNaN(pct)) {
                 el.textContent = '未读取';
-                el.style.color = '#888';
-                el.style.fontWeight = 'normal';
-                el.style.fontSize = '1rem';
-                return;
-            }
-            // [诊断] 显示 999 表示 BLE 通讯正常但 ADC 未更新
-            if (pct === 999) {
-                el.textContent = '999 (诊断值)';
-                el.style.color = '#ff00ff'; // 紫色
-                el.style.fontWeight = 'bold';
-                el.style.fontSize = '1.2rem';
+                el.className = 'device-value white';
                 return;
             }
             el.textContent = pct + '%';
-            el.style.fontWeight = 'bold';
-            el.style.fontSize = '1.2rem';
-            // 根据电量变色
             if (pct <= 20) {
-                el.style.color = '#ff4444'; // 红色
+                el.style.color = '#DC2626';
             } else if (pct <= 50) {
-                el.style.color = '#ffcc00'; // 黄色
+                el.style.color = '#FA541C';
             } else {
-                el.style.color = '#00ff88'; // 绿色
+                el.style.color = '#C4F82A';
             }
         }
 
-        // [诊断] 手动读取电池值
-        async function manualReadBattery() {
-            const debugEl = document.getElementById('batteryDebug');
-            if (!batteryChar) {
-                debugEl.textContent = '错误: 电池特征未初始化';
-                return;
-            }
-            try {
-                debugEl.textContent = '读取中...';
-                const value = await batteryChar.readValue();
-                const rawStr = new TextDecoder().decode(value);
-                updateBatteryDisplay(rawStr);
-                const now = new Date().toLocaleTimeString();
-                debugEl.textContent = `[${now}] 读取成功: "${rawStr}"`;
-            } catch (e) {
-                debugEl.textContent = '读取失败: ' + e.message;
-            }
-        }
         async function syncTime() {
             if (!timeChar) return;
             const now = Math.floor(Date.now() / 1000).toString();
             const encoder = new TextEncoder();
             const data = encoder.encode(now);
-
-            console.log("Syncing Time:", now);
             if (timeChar.properties.writeWithoutResponse) {
                 await timeChar.writeValueWithoutResponse(data);
             } else {
@@ -459,7 +1162,7 @@
 
         async function requestPage(page) {
             currentPage = page;
-            updateStatus(`Loading Page ${page}...`);
+            showStatus(`加载第 ${page} 页...`);
             if (!historyChar) return;
             try {
                 const encoder = new TextEncoder();
@@ -469,7 +1172,9 @@
                 } else {
                     await historyChar.writeValue(data);
                 }
-            } catch (error) { console.error("Write Failed:", error); }
+            } catch (error) {
+                console.error("Write Failed:", error);
+            }
         }
 
         async function refreshData() {
@@ -482,90 +1187,97 @@
             await requestPage(currentPage + 1);
         }
 
-        function handleHistoryNotification(event) {
-            const value = event.target.value;
-            const decoder = new TextDecoder('utf-8');
-            const jsonStr = decoder.decode(value);
-            try {
-                const record = JSON.parse(jsonStr);
-                if (record && record.i) {
-                    historyData[record.i] = record;
-                    updateUI();
-                }
-            } catch (e) { console.log("JSON Error:", e); }
-        }
-
+        // =================== UPDATE UI ===================
         function updateUI() {
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = '';
             let params = Object.values(historyData);
-
-            // Sort by Index Descending (Newest Group First)
             params.sort((a, b) => b.i - a.i);
 
-            if (params.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4">Waiting for data...</td></tr>';
-                return;
-            }
+            if (params.length === 0) return;
 
-            // Prepare Data for Chart
-            const chartData = [...params].reverse(); // Oldest to Newest
-            const scores = [];
+            // Update Metrics (latest group)
+            const latest = params[0];
+            document.getElementById('metricGood').textContent = latest.g;
+            document.getElementById('metricNormal').textContent = latest.n;
+            document.getElementById('metricBad').textContent = latest.b;
 
-            for (let row of params) {
-                const tr = document.createElement('tr');
-                const total = row.g + row.n + row.b;
-                // Calculate Score (0-100)
-                const score = total > 0 ? Math.round((row.g * 100 + row.n * 50) / total) : 0;
+            // Update Progress
+            const totalGroups = params.length;
+            document.getElementById('progressLabel').textContent = `${totalGroups} 组已完成`;
+            const progressPct = Math.min((totalGroups / 10) * 100, 100);
+            document.getElementById('progressBar').style.width = progressPct + '%';
 
-                // Date formatting
-                const dateObj = new Date(row.ts * 1000);
-                const timeStr = row.ts > 0 ? dateObj.toLocaleString('en-US', {
-                    month: 'numeric', day: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
-                }) : '-';
-
-                tr.innerHTML = `
-                    <td>#${row.i}</td>
-                    <td style="font-weight:bold">${score}</td>
-                    <td>
-                        <span class="score-good">${row.g}</span> / 
-                        <span class="score-norm">${row.n}</span> / 
-                        <span class="score-bad">${row.b}</span>
-                    </td>
-                    <td class="ts">${timeStr}</td>
-                `;
-                tbody.appendChild(tr);
-            }
+            // Update Storage
+            document.getElementById('devStorage').textContent = `${totalGroups}/100 组`;
 
             // Update Chart Data
+            const chartData = [...params].reverse(); // Oldest to Newest
             if (myChart) {
                 myChart.data.labels = chartData.map(d => `#${d.i}`);
-
-                // Calculate scores for chart array
                 myChart.data.datasets[0].data = chartData.map(d => {
                     const t = d.g + d.n + d.b;
                     return t > 0 ? Math.round((d.g * 100 + d.n * 50) / t) : 0;
                 });
-
                 myChart.data.datasets[1].data = chartData.map(d => d.g);
                 myChart.data.datasets[2].data = chartData.map(d => d.n);
                 myChart.data.datasets[3].data = chartData.map(d => d.b);
                 myChart.update();
             }
 
-            document.getElementById('pageStatus').textContent = `Loaded ${params.length} records.`;
-            updateStatus("Data Updated.");
+            document.getElementById('pageStatus').textContent = `已加载 ${params.length} 条记录`;
+            document.getElementById('pageStatusTop').textContent = `共${params.length}条`;
+            showStatus("数据已更新");
         }
 
+        // =================== WIPE DATA ===================
+        async function clearAllData() {
+            if (!confirm("⚠️ 危险操作：此操作将永久删除设备上的所有历史数据。\n\n确定继续吗？")) return;
+            if (!historyChar) {
+                showStatus("设备未连接");
+                return;
+            }
+            try {
+                showStatus("正在清除数据...");
+                const encoder = new TextEncoder();
+                await historyChar.writeValue(encoder.encode("WIPE"));
+                historyData = {};
+                updateUI();
+                showStatus("数据已清除 ✓");
+            } catch (error) {
+                console.error("Wipe Failed:", error);
+                showStatus("清除失败: " + error.message);
+            }
+        }
+
+        // =================== DISCONNECT ===================
         function onDisconnected() {
-            updateStatus("Disconnected.");
-            document.getElementById('connectBtn').style.display = 'inline-block';
-            document.getElementById('historyCard').classList.remove('visible');
+            showStatus("设备已断开");
+            document.getElementById('devBLE').textContent = '未连接';
+            document.getElementById('devBLE').style.color = '#DC2626';
+            document.getElementById('connectScreen').style.display = 'flex';
+            document.getElementById('dashboardScreen').style.display = 'none';
+            document.getElementById('tabBar').style.display = 'none';
+            document.getElementById('tabFade').style.display = 'none';
+            document.getElementById('connectBtn').disabled = false;
         }
 
-        function updateStatus(msg) {
-            document.getElementById('status').textContent = msg;
+        function disconnect() {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+            onDisconnected();
+        }
+
+        // =================== HELPERS ===================
+        function showStatus(msg) {
+            const toast = document.getElementById('statusToast');
+            toast.textContent = msg;
+            toast.classList.add('visible');
+            clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => toast.classList.remove('visible'), 2500);
+
+            // Also update connect screen status if visible
+            const statusEl = document.getElementById('connectStatus');
+            if (statusEl) statusEl.textContent = msg;
         }
     </script>
 </body>
