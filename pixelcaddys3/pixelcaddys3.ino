@@ -13,7 +13,7 @@
  */
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
-#define FIRMWARE_VERSION "v2.5.2" // [新增] 便于修改固件版本
+#define FIRMWARE_VERSION "v2.6.0" // [新增] 便于修改固件版本
 
 #include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
@@ -311,6 +311,16 @@ class TimeCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+// Moved here for ConfigCallbacks access
+enum GameState {
+  STATE_PLAYING,
+  STATE_SUMMARY_GROUP,
+  STATE_SUMMARY_FINAL,
+  STATE_SETTINGS
+};
+GameState currentState = STATE_PLAYING;
+void drawPlayingUI(); // Forward declaration
+
 class ConfigCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     String value = pCharacteristic->getValue().c_str();
@@ -346,23 +356,41 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
         audio.playBeep(); // [New] Feedback beep
         Serial.printf("BLE Set Volume: %d\n", val);
       } else if (type == 'M') {
-        // Mode switch: C = Camera Remote, N = Normal
+        // Mode switch: equivalent to Green+Normal combo key
         char mode = value.charAt(2);
         if (mode == 'C') {
-          isCameraRemoteMode = true;
-          Serial.println("BLE Mode: Camera Remote");
+          isAutoRecordEnabled = true;
         } else if (mode == 'N') {
-          isCameraRemoteMode = false;
-          Serial.println("BLE Mode: Normal");
+          isAutoRecordEnabled = false;
         }
+        // Show CAM ON/OFF on LED (same as combo key)
+        xSemaphoreTakeRecursive(displayMutex, portMAX_DELAY);
+        matrix.fillScreen(0);
+        matrix.setTextColor(isAutoRecordEnabled ? C_GREEN : C_RED);
+        matrix.setCursor(2, 6);
+        matrix.print("CAM");
+        matrix.setCursor(2, 13);
+        matrix.print(isAutoRecordEnabled ? "ON" : "OFF");
+        if (isAutoRecordEnabled)
+          matrix.drawPixel(0, 0, matrix.Color(0, 50, 50));
+        matrix.show();
+        xSemaphoreGiveRecursive(displayMutex);
+        playSound(isAutoRecordEnabled ? 5 : 2);
+        Serial.printf("BLE Mode: CAM %s\n", isAutoRecordEnabled ? "ON" : "OFF");
+        // Show for 1 second then redraw
+        delay(1000);
+        if (currentState == STATE_PLAYING)
+          drawPlayingUI();
       }
     }
   }
 
   void onRead(BLECharacteristic *pCharacteristic) {
-    // Return current brightness and volume as "B:xx,V:xx"
-    String configStr =
-        "B:" + String(currentBrightness) + ",V:" + String(currentVolume);
+    // Return config: B=brightness, V=volume, D=connected devices, C=camera mode
+    String configStr = "B:" + String(currentBrightness) +
+                       ",V:" + String(currentVolume) +
+                       ",D:" + String(deviceConnectedCount) +
+                       ",C:" + String(isAutoRecordEnabled ? 1 : 0);
     pCharacteristic->setValue(configStr.c_str());
     Serial.printf("BLE Read Config: %s\n", configStr.c_str());
   }
@@ -429,15 +457,7 @@ void updateHistoryBLE() {
   sendRecord(latestIdx + 1, allGroupsHistory[latestIdx]);
 }
 
-// 状态机定义
-enum GameState {
-  STATE_PLAYING,
-  STATE_SUMMARY_GROUP,
-  STATE_SUMMARY_FINAL,
-  STATE_SETTINGS
-};
-GameState currentState = STATE_PLAYING;
-bool isCameraRemoteMode = false; // [New] Camera remote mode flag
+// GameState moved above ConfigCallbacks
 
 // 结算显示控制
 unsigned long summaryTimer = 0;

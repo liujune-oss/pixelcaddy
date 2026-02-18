@@ -1197,6 +1197,10 @@
                     style="font-size:13px;color:rgba(255,255,255,0.35);text-align:center;max-width:260px;line-height:1.6;">
                     点击按钮切换到拍照遥控模式<br>设备上的按键将变为快门遥控
                 </div>
+                <div id="hidStatus"
+                    style="margin-top:16px;padding:12px 20px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:13px;text-align:center;">
+                    蓝牙键盘：<span id="hidStatusText" style="color:rgba(255,255,255,0.4);">未检测</span>
+                </div>
             </div>
         </div>
 
@@ -1337,7 +1341,7 @@
     <script>
         // =================== DASHBOARD VERSION ===================
         // 每次修改 dashboard 时，在这里更新版本号
-        const DASHBOARD_VERSION = 'v2.5.2';
+        const DASHBOARD_VERSION = 'v2.6.0';
 
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -1563,6 +1567,34 @@
                         } else if (key === 'V') {
                             document.getElementById('sliderVolume').value = val;
                             document.getElementById('valVolume').textContent = val;
+                        } else if (key === 'D') {
+                            // D = device connected count; >=2 means HID keyboard is also connected
+                            const count = parseInt(val);
+                            const hidEl = document.getElementById('hidStatusText');
+                            if (count >= 2) {
+                                hidEl.textContent = '已连接 (' + count + ' 个设备)';
+                                hidEl.style.color = '#C4F82A';
+                            } else {
+                                hidEl.textContent = '未连接 (请在手机蓝牙设置中配对)';
+                                hidEl.style.color = '#EF4444';
+                            }
+                        } else if (key === 'C') {
+                            // C = camera mode (1=on, 0=off), sync toggle button state
+                            const camOn = val === '1';
+                            cameraMode = camOn;
+                            const btn = document.getElementById('remoteModeBtn');
+                            const btnText = document.getElementById('remoteBtnText');
+                            const label = document.getElementById('remoteModeLabel');
+                            const hint = document.getElementById('remoteModeHint');
+                            if (camOn) {
+                                btn.style.background = 'rgba(196,248,42,0.15)';
+                                btn.style.borderColor = '#C4F82A';
+                                btn.style.boxShadow = '0 0 40px rgba(196,248,42,0.25)';
+                                btnText.textContent = '普通模式';
+                                label.textContent = '当前模式：📷 拍照遥控';
+                                label.style.color = '#C4F82A';
+                                hint.innerHTML = '拍照遥控已开启<br>按下设备按键即可拍照';
+                            }
                         }
                     });
                 } catch (e) {
