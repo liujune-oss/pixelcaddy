@@ -1202,25 +1202,37 @@
                     <h2>设备控制</h2>
                 </div>
                 <div class="device-card">
-                    <div class="device-row">
-                        <span class="device-label">亮度</span>
-                        <div style="display:flex;align-items:center;gap:10px;flex:1;justify-content:flex-end;">
+                    <!-- Brightness -->
+                    <div class="device-row" style="flex-direction:column;gap:10px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+                            <span class="device-label">亮度 <span id="valBrightness"
+                                    style="color:#C4F82A;font-variant-numeric:tabular-nums;margin-left:6px;">--</span></span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                            <button onclick="adjustSlider('sliderBrightness', -5, updateBrightness)"
+                                style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">−</button>
                             <input type="range" id="sliderBrightness" min="5" max="100" step="5"
-                                style="width:100px; accent-color: #C4F82A;" onchange="updateBrightness(this.value)"
+                                style="flex:1; accent-color: #C4F82A;" onchange="updateBrightness(this.value)"
                                 oninput="document.getElementById('valBrightness').textContent=this.value">
-                            <span id="valBrightness" class="device-value"
-                                style="width:35px;text-align:right;font-variant-numeric: tabular-nums;">--</span>
+                            <button onclick="adjustSlider('sliderBrightness', 5, updateBrightness)"
+                                style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
                         </div>
                     </div>
+                    <!-- Volume -->
                     <div class="device-row"
-                        style="margin-top:12px; border-top: 1px solid rgba(255,255,255,0.05); padding-top:12px;">
-                        <span class="device-label">音量</span>
-                        <div style="display:flex;align-items:center;gap:10px;flex:1;justify-content:flex-end;">
+                        style="flex-direction:column;gap:10px;margin-top:16px;border-top:1px solid rgba(255,255,255,0.05);padding-top:16px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+                            <span class="device-label">音量 <span id="valVolume"
+                                    style="color:#C4F82A;font-variant-numeric:tabular-nums;margin-left:6px;">--</span></span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                            <button onclick="adjustSlider('sliderVolume', -5, updateVolume)"
+                                style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">−</button>
                             <input type="range" id="sliderVolume" min="0" max="100" step="5"
-                                style="width:100px; accent-color: #C4F82A;" onchange="updateVolume(this.value)"
+                                style="flex:1; accent-color: #C4F82A;" onchange="updateVolume(this.value)"
                                 oninput="document.getElementById('valVolume').textContent=this.value">
-                            <span id="valVolume" class="device-value"
-                                style="width:35px;text-align:right;font-variant-numeric: tabular-nums;">--</span>
+                            <button onclick="adjustSlider('sliderVolume', 5, updateVolume)"
+                                style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
                         </div>
                     </div>
                 </div>
@@ -1645,6 +1657,21 @@
 
         async function updateVolume(val) {
             await sendConfig(`V:${val}`);
+        }
+
+        function adjustSlider(sliderId, delta, callback) {
+            const slider = document.getElementById(sliderId);
+            if (!slider) return;
+            let val = parseInt(slider.value) + delta;
+            val = Math.max(parseInt(slider.min), Math.min(parseInt(slider.max), val));
+            slider.value = val;
+            // Update the display value
+            if (sliderId === 'sliderBrightness') {
+                document.getElementById('valBrightness').textContent = val;
+            } else if (sliderId === 'sliderVolume') {
+                document.getElementById('valVolume').textContent = val;
+            }
+            callback(val);
         }
 
         async function sendConfig(cmd) {
