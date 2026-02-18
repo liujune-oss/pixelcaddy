@@ -755,7 +755,8 @@
         }
 
         /* =================== DETAIL RECORDS SCREEN =================== */
-        #detailScreen {
+        #detailScreen,
+        #settingsScreen {
             display: none;
             flex-direction: column;
             min-height: 100vh;
@@ -1042,9 +1043,14 @@
                     <h1>Pixel Caddy</h1>
                     <div class="subtitle">训练管理仪表盘</div>
                 </div>
-                <button class="ble-status-btn" id="bleStatusBtn" title="蓝牙已连接">
-                    <i data-lucide="bluetooth"></i>
-                </button>
+                <div class="ble-status-btn" id="bleStatusBtn" title="电池电量"
+                    style="display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;gap:0 !important;cursor:default;width:auto !important;height:auto !important;padding:6px 10px !important;border-radius:12px !important;">
+                    <div id="batteryIconContainer" style="display:flex;align-items:center;justify-content:center;">
+                        <i data-lucide="battery" style="width:20px;height:20px;"></i>
+                    </div>
+                    <span id="headerBattery"
+                        style="font-family:'Space Mono',monospace;font-size:11px;line-height:1;color:#C4F82A;">--%</span>
+                </div>
             </div>
 
             <div class="dash-content">
@@ -1115,42 +1121,6 @@
                         <div class="page-status" id="pageStatus"></div>
                     </div>
                 </div>
-
-                <!-- Device Status -->
-                <div>
-                    <div class="section-head" style="margin-bottom:16px;">
-                        <h2>设备状态</h2>
-                    </div>
-                    <div class="device-card">
-                        <div class="device-row">
-                            <i data-lucide="battery-charging" class="lime"></i>
-                            <span class="device-label">电池电量</span>
-                            <span class="device-value lime" id="devBattery">--</span>
-                        </div>
-                        <div class="device-row">
-                            <i data-lucide="bluetooth" class="lime"></i>
-                            <span class="device-label">蓝牙连接</span>
-                            <span class="device-value lime" id="devBLE">已连接</span>
-                        </div>
-                        <div class="device-row">
-                            <i data-lucide="hard-drive" class="muted"></i>
-                            <span class="device-label">存储用量</span>
-                            <span class="device-value white" id="devStorage">--</span>
-                        </div>
-                        <div class="device-row">
-                            <i data-lucide="cpu" class="muted"></i>
-                            <span class="device-label">固件版本</span>
-                            <span class="device-value white">v2.1.0</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Danger Zone -->
-                <div class="danger-zone">
-                    <button class="danger-btn" onclick="clearAllData()">
-                        ⚠️ 清除设备全部数据
-                    </button>
-                </div>
             </div>
         </div>
 
@@ -1184,6 +1154,69 @@
             </div>
         </div>
 
+        <!-- =================== SETTINGS SCREEN =================== -->
+        <div id="settingsScreen">
+            <div class="detail-header">
+                <div>
+                    <h1>设置</h1>
+                    <div class="subtitle">设备管理与系统设置</div>
+                </div>
+            </div>
+
+            <!-- Device Status -->
+            <div style="padding:0 20px;">
+                <div class="section-head" style="margin-bottom:16px;">
+                    <h2>设备状态</h2>
+                </div>
+                <div class="device-card">
+                    <div class="device-row">
+                        <i data-lucide="battery-charging" class="lime"></i>
+                        <span class="device-label">电池电量</span>
+                        <span class="device-value lime" id="devBattery">--</span>
+                    </div>
+                    <div class="device-row">
+                        <i data-lucide="bluetooth" class="lime"></i>
+                        <span class="device-label">蓝牙连接</span>
+                        <span class="device-value lime" id="devBLE">已连接</span>
+                    </div>
+                    <div class="device-row">
+                        <i data-lucide="hard-drive" class="muted"></i>
+                        <span class="device-label">存储用量</span>
+                        <span class="device-value white" id="devStorage">--</span>
+                    </div>
+                    <div class="device-row">
+                        <i data-lucide="cpu" class="muted"></i>
+                        <span class="device-label">固件版本</span>
+                        <span id="firmwareVersion" class="device-value white">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Disconnect -->
+            <div style="padding:0 20px;margin-top:24px;">
+                <div class="section-head" style="margin-bottom:16px;">
+                    <h2>连接管理</h2>
+                </div>
+                <button class="danger-btn"
+                    style="width:100%;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);color:#60A5FA;"
+                    onclick="disconnect()">
+                    🔌 断开蓝牙连接
+                </button>
+            </div>
+
+            <!-- Danger Zone -->
+            <div style="padding:0 20px;margin-top:24px;">
+                <div class="section-head" style="margin-bottom:16px;">
+                    <h2 style="color:#EF4444;">危险区域</h2>
+                </div>
+                <div class="danger-zone" style="margin:0;">
+                    <button class="danger-btn" onclick="clearAllData()">
+                        ⚠️ 清除设备全部数据
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab Fade & Tab Bar -->
         <div class="tab-fade" id="tabFade"></div>
         <div class="tab-bar" id="tabBar">
@@ -1199,7 +1232,7 @@
                 <i data-lucide="camera"></i>
                 <span>遥控</span>
             </button>
-            <button class="tab-item" onclick="disconnect()">
+            <button class="tab-item" onclick="switchTab('settings', this)">
                 <i data-lucide="settings"></i>
                 <span>设置</span>
             </button>
@@ -1371,7 +1404,7 @@
                         { name: 'Pixel Caddy' },
                         { services: [SERVICE_UUID] }
                     ],
-                    optionalServices: [SERVICE_UUID]
+                    optionalServices: [SERVICE_UUID, 0x180A]
                 });
 
                 device.addEventListener('gattserverdisconnected', onDisconnected);
@@ -1396,6 +1429,17 @@
                     updateBatteryDisplay(rawStr);
                 } catch (e) {
                     console.warn("Battery characteristic not available:", e);
+                }
+
+                // Firmware Version
+                try {
+                    const infoService = await server.getPrimaryService(0x180A);
+                    const firmwareChar = await infoService.getCharacteristic(0x2A26);
+                    const firmwareVal = await firmwareChar.readValue();
+                    const firmwareStr = new TextDecoder().decode(firmwareVal);
+                    document.getElementById('firmwareVersion').textContent = firmwareStr;
+                } catch (e) {
+                    console.warn("Firmware version not available:", e);
                 }
 
                 // Switch to Dashboard
@@ -1457,20 +1501,41 @@
 
         function updateBatteryDisplay(percent) {
             const el = document.getElementById('devBattery');
+            const headerEl = document.getElementById('headerBattery');
+            const iconContainer = document.getElementById('batteryIconContainer');
             const pct = parseInt(percent);
+
             if (isNaN(pct)) {
                 el.textContent = '未读取';
                 el.className = 'device-value white';
+                if (headerEl) headerEl.textContent = '--%';
                 return;
             }
+
             el.textContent = pct + '%';
+            if (headerEl) headerEl.textContent = pct + '%';
+
+            let color = '#C4F82A';
+            let iconName = 'battery-full';
+
             if (pct <= 20) {
-                el.style.color = '#DC2626';
+                color = '#DC2626';
+                iconName = 'battery-warning';
             } else if (pct <= 50) {
-                el.style.color = '#FA541C';
-            } else {
-                el.style.color = '#C4F82A';
+                color = '#FA541C';
+                iconName = 'battery-medium';
+            } else if (pct <= 90) {
+                iconName = 'battery-medium';
             }
+
+            // Update header icon
+            if (iconContainer) {
+                iconContainer.innerHTML = `<i data-lucide="${iconName}" style="width:20px;height:20px;color:${color}"></i>`;
+                lucide.createIcons();
+            }
+
+            el.style.color = color;
+            if (headerEl) headerEl.style.color = color;
         }
 
         async function syncTime() {
@@ -1596,6 +1661,8 @@
             document.getElementById('devBLE').style.color = '#DC2626';
             document.getElementById('connectScreen').style.display = 'flex';
             document.getElementById('dashboardScreen').style.display = 'none';
+            document.getElementById('detailScreen').style.display = 'none';
+            document.getElementById('settingsScreen').style.display = 'none';
             document.getElementById('tabBar').style.display = 'none';
             document.getElementById('tabFade').style.display = 'none';
             document.getElementById('connectBtn').disabled = false;
@@ -1632,9 +1699,13 @@
             // Switch screens
             document.getElementById('dashboardScreen').style.display = (tabName === 'dashboard') ? 'flex' : 'none';
             document.getElementById('detailScreen').style.display = (tabName === 'detail') ? 'flex' : 'none';
+            document.getElementById('settingsScreen').style.display = (tabName === 'settings') ? 'flex' : 'none';
 
             if (tabName === 'detail') {
                 renderRecords();
+            }
+            if (tabName === 'settings') {
+                lucide.createIcons();
             }
         }
 
