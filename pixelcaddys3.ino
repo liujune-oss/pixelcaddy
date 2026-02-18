@@ -97,13 +97,16 @@ volatile bool displayNeedsUpdate = false;
 #define CHAR_BATTERY_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a1" // 电池电量
 #define CHAR_VERSION_UUID                                                      \
   "beb5483e-36e1-4688-b7f5-ea07361b26a2" // [New] Firmware Version
+#define CHAR_CONFIG_UUID                                                       \
+  "beb5483e-36e1-4688-b7f5-ea07361b26a3" // [New] Settings (Brightness/Volume)
 
 BLEServer *pServer = NULL;
 BLECharacteristic *pHistoryCharacteristic = NULL;
 BLECharacteristic *pTimeCharacteristic = NULL;
 BLECharacteristic *pBatteryCharacteristic = NULL; // [新增] 电池特征值
 BLECharacteristic *pVersionCharacteristic =
-    NULL;                     // [New] Firmware Version Characteristic
+    NULL; // [New] Firmware Version Characteristic
+BLECharacteristic *pConfigCharacteristic = NULL; // [New] Config (Read/Write)
 int deviceConnectedCount = 0; // [Fix] Counter instead of bool
 bool isBleEnabled = true;
 bool oldDeviceConnected = false;
@@ -173,6 +176,7 @@ void sendConsumerKey(uint8_t mask) {
 
 // Forward Declarations
 void saveData();
+void saveBrightness(); // [Fix] Forward declaration
 void sendHistoryPage(int page);
 // void playSound(int type);    // [DEPRECATED] Old blocking sound
 void requestDisplayUpdate(); // [S3 DUAL-CORE] Request display refresh
@@ -288,6 +292,43 @@ class TimeCallbacks : public BLECharacteristicCallbacks {
           saveData();
         }
         // [Stream Protocol] Auto-blast removed specific to page request
+      }
+    }
+  }
+};
+
+class ConfigCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    String value = pCharacteristic->getValue().c_str();
+    if (value.length() > 0) {
+      char type = value.charAt(0);
+      int val = value.substring(2).toInt();
+
+      if (type == 'B') {
+        // Brightness (5-100)
+        if (val < 5)
+          val = 5;
+        if (val > 100)
+          val = 100;
+        currentBrightness = val;
+        matrix.setBrightness(currentBrightness);
+        saveBrightness();
+        Serial.printf("BLE Set Brightness: %d\n", val);
+      } else if (type == 'V') {
+        // Volume (0-100)
+        if (val < 0)
+          val = 0;
+        if (val > 100)
+          val = 100;
+        currentVolume = val;
+        audio.setVolume(currentVolume);
+
+        // Save volume directly to prefs
+        prefs.begin("pixelcaddy", false);
+        prefs.putInt("vol", currentVolume);
+        prefs.end();
+
+        Serial.printf("BLE Set Volume: %d\n", val);
       }
     }
   }
@@ -1243,6 +1284,12 @@ void setup() {
   pVersionCharacteristic = pService->createCharacteristic(
       CHAR_VERSION_UUID, BLECharacteristic::PROPERTY_READ);
   pVersionCharacteristic->setValue("v2.2.0");
+
+  // [New] Config Characteristic (Read/Write)
+  pConfigCharacteristic = pService->createCharacteristic(
+      CHAR_CONFIG_UUID,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
+  pConfigCharacteristic->setCallbacks(new ConfigCallbacks());
 
   // [诊断] 设置特殊初始值 999，如果网页显示 999 说明 BLE 通讯正常但 ADC 未更新
   String initVal = "999";
