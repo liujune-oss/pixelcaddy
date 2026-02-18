@@ -1257,9 +1257,10 @@
         const CHAR_TIME_UUID = "87a7d400-5343-4565-a9b7-1601b0034876";
         const CHAR_BATTERY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a1";
         const CHAR_VERSION_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a2"; // [New]
+        const CHAR_CONFIG_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a3"; // [New]
 
         // =================== STATE ===================
-        let device, server, service, historyChar, timeChar, batteryChar;
+        let device, server, service, historyChar, timeChar, batteryChar, configChar;
         let historyData = {};
         let currentPage = 0;
         let myChart = null;
@@ -1457,6 +1458,13 @@
                     document.getElementById('firmwareVersion').textContent = "Missing (Unpair?)";
                 }
 
+                // Config (Brightness/Volume)
+                try {
+                    configChar = await service.getCharacteristic(CHAR_CONFIG_UUID);
+                } catch (e) {
+                    console.warn("Config characteristic not available:", e);
+                }
+
                 // Switch to Dashboard
                 document.getElementById('connectScreen').style.display = 'none';
                 document.getElementById('dashboardScreen').style.display = 'flex';
@@ -1590,6 +1598,34 @@
 
         async function loadOlder() {
             await requestPage(currentPage + 1);
+        }
+
+        async function updateBrightness(val) {
+            await sendConfig(`B:${val}`);
+        }
+
+        async function updateVolume(val) {
+            await sendConfig(`V:${val}`);
+        }
+
+        async function sendConfig(cmd) {
+            if (!configChar) {
+                showStatus("设备不支持配置");
+                return;
+            }
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(cmd);
+                if (configChar.properties.writeWithoutResponse) {
+                    await configChar.writeValueWithoutResponse(data);
+                } else {
+                    await configChar.writeValue(data);
+                }
+                console.log("Sent Config:", cmd);
+            } catch (e) {
+                console.error("Config Write Failed:", e);
+                showStatus("设置失败");
+            }
         }
 
         async function refreshDeviceStatus() {
