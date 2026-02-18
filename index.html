@@ -1420,6 +1420,13 @@
                 server = await device.gatt.connect();
                 service = await server.getPrimaryService(SERVICE_UUID);
 
+                // [DEBUG] Log all characteristics
+                try {
+                    const allChars = await service.getCharacteristics();
+                    console.log("Found Characteristics (UUIDs):", allChars.map(c => c.uuid));
+                    console.log("Looking for Version UUID:", CHAR_VERSION_UUID);
+                } catch (e) { console.warn("Could not list characteristics:", e); }
+
                 showStatus("正在订阅数据...");
                 historyChar = await service.getCharacteristic(CHAR_HISTORY_UUID);
                 await historyChar.startNotifications();
@@ -1447,7 +1454,7 @@
                     document.getElementById('firmwareVersion').textContent = firmwareStr;
                 } catch (e) {
                     console.warn("Firmware version not available:", e);
-                    document.getElementById('firmwareVersion').textContent = "Unknown";
+                    document.getElementById('firmwareVersion').textContent = "Missing (Unpair?)";
                 }
 
                 // Switch to Dashboard
