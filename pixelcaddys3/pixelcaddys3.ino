@@ -13,6 +13,7 @@
  */
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
+#define FIRMWARE_VERSION "v2.2.1" // [新增] 便于修改固件版本
 
 #include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
@@ -139,6 +140,19 @@ bool hasSentStop = false;
 // HID Key Definitions (Bitmask for Report ID 2)
 const uint8_t hid_volume_up = 0x01; // Bit 0 = Usage 0xE9
 const uint8_t hid_volume_release = 0x00;
+
+// ================= Settings Variables (Moved for Scope) =================
+int currentBrightness = 20;
+int currentVolume = 30; // [新增] 音量设置 (0-100)
+const int SETTING_STEP = 10;
+const int BRT_MAX = 100;
+const int BRT_MIN = 10;
+const int VOL_MAX = 100;
+const int VOL_MIN = 0;
+
+// [新增] 设置菜单状态
+int settingsMode = 0; // 0=亮度, 1=音量
+const int SETTINGS_MODE_COUNT = 2;
 
 // [NEW] Diagnostic HID Helper (Keyboard ID 1)
 void sendHIDKey(uint8_t keycode) {
@@ -313,6 +327,7 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
         currentBrightness = val;
         matrix.setBrightness(currentBrightness);
         saveBrightness();
+        requestDisplayUpdate(); // [Fix] Immediate refresh
         Serial.printf("BLE Set Brightness: %d\n", val);
       } else if (type == 'V') {
         // Volume (0-100)
@@ -328,6 +343,7 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
         prefs.putInt("vol", currentVolume);
         prefs.end();
 
+        audio.playBeep(); // [New] Feedback beep
         Serial.printf("BLE Set Volume: %d\n", val);
       }
     }
@@ -423,19 +439,6 @@ int groupBadCount = 0; // [新增] 方便统计
 uint8_t groupHistory[10];
 int currentGroupIdx = 0;
 int groupResults[10];
-
-// 设置
-int currentBrightness = 20;
-int currentVolume = 30; // [新增] 音量设置 (0-100)
-const int SETTING_STEP = 10;
-const int BRT_MAX = 100;
-const int BRT_MIN = 10;
-const int VOL_MAX = 100;
-const int VOL_MIN = 0;
-
-// [新增] 设置菜单状态
-int settingsMode = 0; // 0=亮度, 1=音量
-const int SETTINGS_MODE_COUNT = 2;
 
 // 长按与防抖
 unsigned long lastActivityTime = 0;
@@ -1283,7 +1286,7 @@ void setup() {
   // [New] Firmware Version Characteristic (Read Only)
   pVersionCharacteristic = pService->createCharacteristic(
       CHAR_VERSION_UUID, BLECharacteristic::PROPERTY_READ);
-  pVersionCharacteristic->setValue("v2.2.0");
+  pVersionCharacteristic->setValue(FIRMWARE_VERSION);
 
   // [New] Config Characteristic (Read/Write)
   pConfigCharacteristic = pService->createCharacteristic(

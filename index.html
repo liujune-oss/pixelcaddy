@@ -1640,7 +1640,8 @@
 
         async function sendConfig(cmd) {
             if (!configChar) {
-                showStatus("设备不支持配置");
+                showStatus("请删除蓝牙配对后重试");
+                console.warn("Config Char not found. User needs to Unpair/Forget device in OS settings.");
                 return;
             }
             try {
