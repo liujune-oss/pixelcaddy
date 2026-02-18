@@ -348,6 +348,14 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
       }
     }
   }
+
+  void onRead(BLECharacteristic *pCharacteristic) {
+    // Return current brightness and volume as "B:xx,V:xx"
+    String configStr =
+        "B:" + String(currentBrightness) + ",V:" + String(currentVolume);
+    pCharacteristic->setValue(configStr.c_str());
+    Serial.printf("BLE Read Config: %s\n", configStr.c_str());
+  }
 };
 
 void sendRecord(int index, GroupRecord &r) {

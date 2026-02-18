@@ -1504,6 +1504,21 @@
                 // Config (Brightness/Volume)
                 try {
                     configChar = await service.getCharacteristic(CHAR_CONFIG_UUID);
+                    // Read current values from device
+                    const configVal = await configChar.readValue();
+                    const configStr = new TextDecoder().decode(configVal);
+                    // Parse "B:xx,V:xx"
+                    const parts = configStr.split(',');
+                    parts.forEach(part => {
+                        const [key, val] = part.split(':');
+                        if (key === 'B') {
+                            document.getElementById('sliderBrightness').value = val;
+                            document.getElementById('valBrightness').textContent = val;
+                        } else if (key === 'V') {
+                            document.getElementById('sliderVolume').value = val;
+                            document.getElementById('valVolume').textContent = val;
+                        }
+                    });
                 } catch (e) {
                     console.warn("Config characteristic not available:", e);
                 }
