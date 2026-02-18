@@ -1761,8 +1761,9 @@
 
                 // Format timestamp
                 let timeStr = '--';
-                if (rec.t && rec.t > 1000000000) {
-                    const d = new Date(rec.t * 1000);
+                const ts = rec.ts || rec.t; // Support both keys
+                if (ts && ts > 1000000000) {
+                    const d = new Date(ts * 1000);
                     timeStr = d.getFullYear() + '-' +
                         String(d.getMonth() + 1).padStart(2, '0') + '-' +
                         String(d.getDate()).padStart(2, '0') + ' ' +
