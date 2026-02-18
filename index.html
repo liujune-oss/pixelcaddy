@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pixel Caddy Dashboard</title>
+    <title>Pixel Caddy Dashboard v2.0</title>
 
     <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
@@ -16,7 +16,9 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&family=Space+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -166,8 +168,17 @@
         }
 
         @keyframes pulse-ring {
-            0%, 100% { opacity: 0.4; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.05); }
+
+            0%,
+            100% {
+                opacity: 0.4;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
         }
 
         .scanning-ring {
@@ -175,8 +186,15 @@
         }
 
         @keyframes scan-expand {
-            0% { opacity: 0.6; transform: scale(0.8); }
-            100% { opacity: 0; transform: scale(1.3); }
+            0% {
+                opacity: 0.6;
+                transform: scale(0.8);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.3);
+            }
         }
 
         .connect-status {
@@ -399,8 +417,13 @@
             font-size: 11px;
         }
 
-        .metric-card.neutral .metric-trend.orange { color: var(--color-normal); }
-        .metric-card.neutral .metric-trend.lime { color: var(--accent-lime); }
+        .metric-card.neutral .metric-trend.orange {
+            color: var(--color-normal);
+        }
+
+        .metric-card.neutral .metric-trend.lime {
+            color: var(--accent-lime);
+        }
 
         /* Progress Section */
         .progress-card {
@@ -581,8 +604,13 @@
             flex-shrink: 0;
         }
 
-        .device-row i.lime { color: var(--accent-lime); }
-        .device-row i.muted { color: var(--text-muted); }
+        .device-row i.lime {
+            color: var(--accent-lime);
+        }
+
+        .device-row i.muted {
+            color: var(--text-muted);
+        }
 
         .device-row .device-label {
             flex: 1;
@@ -596,8 +624,13 @@
             font-weight: 500;
         }
 
-        .device-row .device-value.lime { color: var(--accent-lime); }
-        .device-row .device-value.white { color: var(--text-primary); }
+        .device-row .device-value.lime {
+            color: var(--accent-lime);
+        }
+
+        .device-row .device-value.white {
+            color: var(--text-primary);
+        }
 
         /* Danger Zone */
         .danger-zone {
@@ -669,8 +702,13 @@
             color: var(--text-muted);
         }
 
-        .tab-item.active i { color: var(--accent-lime); }
-        .tab-item.active span { color: var(--accent-lime); }
+        .tab-item.active i {
+            color: var(--accent-lime);
+        }
+
+        .tab-item.active span {
+            color: var(--accent-lime);
+        }
 
         /* Gradient fade above tab bar */
         .tab-fade {
@@ -722,7 +760,7 @@
                     <h1>Pixel Caddy</h1>
                     <div class="subtitle">设备连接</div>
                 </div>
-                <div class="version-badge">v2.1.0</div>
+                <div class="version-badge"></div>
             </div>
 
             <div class="ble-visual">
@@ -899,6 +937,10 @@
     </div>
 
     <script>
+        // =================== DASHBOARD VERSION ===================
+        // 每次修改 dashboard 时，在这里更新版本号
+        const DASHBOARD_VERSION = 'v2.0';
+
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_HISTORY_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26ac";
@@ -914,6 +956,9 @@
         // =================== INIT LUCIDE ICONS ===================
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
+            // 自动填充所有版本号显示
+            document.querySelectorAll('.version-badge').forEach(el => el.textContent = DASHBOARD_VERSION);
+            document.title = `Pixel Caddy Dashboard ${DASHBOARD_VERSION}`;
         });
 
         // =================== CHART INIT ===================
