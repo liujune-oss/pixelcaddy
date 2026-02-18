@@ -1225,6 +1225,11 @@ void setup() {
       BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pBatteryCharacteristic->addDescriptor(new BLE2902());
 
+  // [新增] 固件版本 (放主服务，避免HID冲突)
+  BLECharacteristic *pFirmware = pService->createCharacteristic(
+      (uint16_t)0x2A26, BLECharacteristic::PROPERTY_READ);
+  pFirmware->setValue("v2.2.0");
+
   // [诊断] 设置特殊初始值 999，如果网页显示 999 说明 BLE 通讯正常但 ADC 未更新
   String initVal = "999";
   pBatteryCharacteristic->setValue((uint8_t *)initVal.c_str(),

@@ -1242,7 +1242,7 @@
     <script>
         // =================== DASHBOARD VERSION ===================
         // 每次修改 dashboard 时，在这里更新版本号
-        const DASHBOARD_VERSION = 'v2.0';
+        const DASHBOARD_VERSION = 'v2.2.0';
 
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -1404,7 +1404,7 @@
                         { name: 'Pixel Caddy' },
                         { services: [SERVICE_UUID] }
                     ],
-                    optionalServices: [SERVICE_UUID, 0x180A]
+                    optionalServices: [SERVICE_UUID]
                 });
 
                 device.addEventListener('gattserverdisconnected', onDisconnected);
@@ -1431,15 +1431,15 @@
                     console.warn("Battery characteristic not available:", e);
                 }
 
-                // Firmware Version
+                // Firmware Version (Main Service)
                 try {
-                    const infoService = await server.getPrimaryService(0x180A);
-                    const firmwareChar = await infoService.getCharacteristic(0x2A26);
+                    const firmwareChar = await service.getCharacteristic(0x2A26);
                     const firmwareVal = await firmwareChar.readValue();
                     const firmwareStr = new TextDecoder().decode(firmwareVal);
                     document.getElementById('firmwareVersion').textContent = firmwareStr;
                 } catch (e) {
                     console.warn("Firmware version not available:", e);
+                    document.getElementById('firmwareVersion').textContent = "Unknown";
                 }
 
                 // Switch to Dashboard
