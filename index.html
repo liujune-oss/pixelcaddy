@@ -1346,7 +1346,7 @@
     <script>
         // =================== DASHBOARD VERSION ===================
         // 每次修改 dashboard 时，在这里更新版本号
-        const DASHBOARD_VERSION = 'v2.7.0';
+        const DASHBOARD_VERSION = 'v2.7.5';
 
         // =================== BLE CONSTANTS ===================
         const SERVICE_UUID = "5fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -1572,15 +1572,15 @@
                         } else if (key === 'V') {
                             document.getElementById('sliderVolume').value = val;
                             document.getElementById('valVolume').textContent = val;
-                        } else if (key === 'D') {
-                            // D = device connected count; >=2 means HID keyboard is also connected
+                        } else if (key === 'H') {
+                            // H = bonded device count; >0 means HID keyboard has been paired
                             const count = parseInt(val);
                             const hidEl = document.getElementById('hidStatusText');
-                            if (count >= 2) {
-                                hidEl.textContent = '已连接 (' + count + ' 个设备)';
+                            if (count > 0) {
+                                hidEl.textContent = '已配对';
                                 hidEl.style.color = '#C4F82A';
                             } else {
-                                hidEl.textContent = '未连接 (请在手机蓝牙设置中配对)';
+                                hidEl.textContent = '未配对 (请在手机蓝牙设置中配对)';
                                 hidEl.style.color = '#EF4444';
                             }
                         } else if (key === 'C') {

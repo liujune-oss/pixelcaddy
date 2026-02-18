@@ -13,7 +13,7 @@
  */
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
-#define FIRMWARE_VERSION "v2.6.0" // [新增] 便于修改固件版本
+#define FIRMWARE_VERSION "v2.6.5" // [新增] 便于修改固件版本
 
 #include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
@@ -386,10 +386,12 @@ class ConfigCallbacks : public BLECharacteristicCallbacks {
   }
 
   void onRead(BLECharacteristic *pCharacteristic) {
-    // Return config: B=brightness, V=volume, D=connected devices, C=camera mode
+    // H = bonded device count (>0 means HID keyboard has been paired)
+    int bondedCount = esp_ble_get_bond_device_num();
+    // Return config: B=brightness, V=volume, H=HID paired, C=camera mode
     String configStr = "B:" + String(currentBrightness) +
                        ",V:" + String(currentVolume) +
-                       ",D:" + String(deviceConnectedCount) +
+                       ",H:" + String(bondedCount) +
                        ",C:" + String(isAutoRecordEnabled ? 1 : 0);
     pCharacteristic->setValue(configStr.c_str());
     Serial.printf("BLE Read Config: %s\n", configStr.c_str());
