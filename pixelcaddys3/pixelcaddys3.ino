@@ -13,7 +13,7 @@
  */
 
 #define ELEGANTOTA_USE_ASYNC_WEBSERVER 1
-#define FIRMWARE_VERSION "v2.2.1" // [新增] 便于修改固件版本
+#define FIRMWARE_VERSION "v2.5.0" // [新增] 便于修改固件版本
 
 #include "AudioPlayer.h" // [NEW] Advanced Audio
 #include <Adafruit_GFX.h>
